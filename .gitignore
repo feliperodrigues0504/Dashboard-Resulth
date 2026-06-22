@@ -1,0 +1,13 @@
+# Credenciais — nunca versionar
+.env
+
+# Banco analítico local (gerado automaticamente)
+data/*.duckdb
+data/*.duckdb.wal
+
+# Python
+__pycache__/
+*.pyc
+
+# Streamlit
+.streamlit/secrets.toml

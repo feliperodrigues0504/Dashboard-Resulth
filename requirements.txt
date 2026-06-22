@@ -1,0 +1,19 @@
+# Dashboards Resulth — Cetel
+# Gerado em 2026-06-12 · Auditado em 2026-06-22 (conferido 1:1 contra os imports
+# do código — nada declarado aqui está sem uso, nada usado está faltando aqui)
+# Instalar: pip install -r requirements.txt
+# Nota: fbclient.dll deve estar na raiz do projeto (não instalado via pip)
+
+streamlit==1.58.0
+plotly==6.7.0
+pandas==3.0.3
+numpy==2.4.6
+duckdb==1.5.3
+fdb==2.0.4
+fpdf2==2.8.7
+openpyxl==3.1.5
+# ^ openpyxl: sem "import openpyxl" literal no código — é usado como engine
+#   do pd.ExcelWriter(engine="openpyxl") em core/export.py. Não remover.
+apscheduler==3.11.2
+streamlit-aggrid==1.2.1.post2
+python-dotenv==1.2.2
