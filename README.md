@@ -1,9 +1,56 @@
 # Cetel — Dashboard Executivo Resulth
 
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.58-FF4B4B?logo=streamlit&logoColor=white)
+![Firebird](https://img.shields.io/badge/Firebird-2.5-orange)
+![DuckDB](https://img.shields.io/badge/DuckDB-1.5-FFF000?logo=duckdb&logoColor=black)
+![Status](https://img.shields.io/badge/status-em%20produção-success)
+
 Dashboard executivo em Streamlit para a Cetel, consumindo dados em tempo real do
 ERP Resulth (Firebird) e mantendo histórico/configurações próprios em DuckDB.
 Cobre 5 módulos: **Financeiro**, **Comercial**, **Estoque**, **Compras** e uma
 **Central de Alertas** que agrega sinais dos quatro.
+
+## Sobre o projeto
+
+Esse dashboard nasceu da necessidade de dar visibilidade executiva a um ERP
+(Resulth) que só expõe os dados via relatórios internos do próprio sistema.
+A ideia é simples: ler o Firebird do ERP **sem nunca escrever nele** (é a base
+de produção real do cliente), calcular KPIs/indicadores em Python, e manter um
+histórico próprio (DuckDB) para gráficos de evolução que o ERP não oferece.
+
+### Funcionalidades por módulo
+
+- 💰 **Financeiro** — Contas a Receber/Pagar, aging por faixa de atraso, fluxo
+  de caixa projetado (7/15/30/60/90 dias), PMR/PMP, mapa de calor de
+  vencimentos, concentração de inadimplência, drill-down até o título e os
+  itens da NF/pedido.
+- 📈 **Comercial** — Meta x realizado, funil de pedidos, ranking de vendedores,
+  curva ABC de clientes/produtos, sazonalidade, clientes novos x recorrentes,
+  clientes em queda de compra, drill-down Cliente → Pedido → Itens.
+- 📦 **Estoque** — Curva ABC por valor investido, giro por grupo, estoque
+  parado, produtos nunca vendidos, controle de ruptura/abaixo do mínimo,
+  histórico de movimentações por produto.
+- 🛒 **Compras** — Rentabilidade por fornecedor, dependência de fornecedor
+  (concentração), produtos comprados sem giro, estoque parado por fornecedor.
+- 🔔 **Central de Alertas** — agrega regras de negócio dos 4 módulos (caixa
+  baixo, AP vencido, cliente inadimplente, estoque parado, fornecedor
+  concentrado, snapshot atrasado...) em um painel único, com thresholds
+  configuráveis.
+- Exportação de qualquer seção em **Excel** e **PDF**, comentários gerenciais
+  persistentes por indicador, e impressão formatada de cada página.
+
+### Tecnologias utilizadas
+
+| Camada | Tecnologia |
+|---|---|
+| Front-end / app | [Streamlit](https://streamlit.io/) + [Plotly](https://plotly.com/python/) (gráficos) + [streamlit-aggrid](https://github.com/PablocFonseca/streamlit-aggrid) (tabelas interativas) |
+| Linguagem | Python 3.11+ |
+| Origem dos dados | Firebird 2.5 (ERP, acesso somente leitura via [`fdb`](https://github.com/FirebirdSQL/python3-fdb)) |
+| Armazenamento próprio | [DuckDB](https://duckdb.org/) (histórico, comentários, configurações) |
+| Exportação | [fpdf2](https://github.com/py-pdf/fpdf2) (PDF) + [openpyxl](https://openpyxl.readthedocs.io/) (Excel) |
+| Agendamento | [APScheduler](https://apscheduler.readthedocs.io/) (snapshot diário com retry) |
+| Config | [python-dotenv](https://github.com/theskumar/python-dotenv) |
 
 ---
 
