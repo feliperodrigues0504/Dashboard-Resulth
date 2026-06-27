@@ -9,11 +9,10 @@ import pandas as pd
 from datetime import date
 
 from components.bi_icons import inject_bi, bi, section_header
-from components.sidebar_filtros import render_sidebar
+from components.sidebar_filtros import render_sidebar, carregar_opcoes_filtros
 from components.print_btn import render_print_css, render_print_button
 from components.metrics import fmt_brl
 from components.theme import NIVEL_STYLE, NIVEL_LABEL
-from core.data.repositories.cadastros_repo import fetch_opcoes_filtros
 from core.data.duckdb_store import init_store
 from core.domain.alertas import get_todos_alertas, resumo_alertas, CFG
 
@@ -51,16 +50,9 @@ def _carregar_alertas(ini: str, fim: str):
     """Avalia todas as regras de alerta (Financeiro, Comercial, Estoque, Compras) para o período informado."""
     return get_todos_alertas(ini, fim)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _carregar_opcoes():
-    """Carrega as opções de filtro (cadastros) e as deixa em session_state para components.sidebar_filtros usar."""
-    opc = fetch_opcoes_filtros()
-    st.session_state["opcoes_cadastros"] = opc
-    return opc
-
 
 try:
-    opcoes = _carregar_opcoes()
+    opcoes = carregar_opcoes_filtros()
 except Exception as e:
     st.error(f"Erro ao conectar ao banco: {e}"); st.stop()
 

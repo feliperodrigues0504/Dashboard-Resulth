@@ -17,13 +17,12 @@ from core.domain.estoque import (
     get_giro_por_grupo, get_top_produtos,
     get_produtos_sem_venda, get_movimentacoes_produto,
 )
-from core.data.repositories.cadastros_repo import fetch_opcoes_filtros
 from core.data.duckdb_store import init_store
-from components.sidebar_filtros import render_sidebar
+from components.sidebar_filtros import render_sidebar, carregar_opcoes_filtros
 from components.print_btn import render_print_css, render_print_button
 from components.metrics import fmt_brl, kpi_card
 from components.theme import COR_PRIM, COR_OK, COR_ALERTA, COR_PERIGO
-from components.widgets import df_selecionavel, make_widget_comentario, make_toolbar_export
+from components.widgets import df_selecionavel, selecao_mudou, make_widget_comentario, make_toolbar_export
 
 st.set_page_config(page_title="Estoque / Produtos", page_icon="📦", layout="wide")
 init_store()
@@ -99,13 +98,6 @@ def _carregar_ult_venda():
     """Carrega a data da última venda de cada produto (para estoque parado e produtos sem venda)."""
     return get_ultima_venda()
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _carregar_opcoes():
-    """Carrega as opções de filtro (cadastros) e as deixa em session_state para components.sidebar_filtros usar."""
-    opc = fetch_opcoes_filtros()
-    st.session_state["opcoes_cadastros"] = opc
-    return opc
-
 @st.cache_data(ttl=900, show_spinner=False)
 def _carregar_top(data_ini_str, data_fim_str):
     """Carrega o top produtos por quantidade/faturamento/lucro no período (aba Top Produtos)."""
@@ -120,7 +112,7 @@ def _carregar_giro(data_ini_str, data_fim_str):
 try:
     df_est_raw = _carregar_estoque()
     df_ult_venda = _carregar_ult_venda()
-    opcoes = _carregar_opcoes()
+    opcoes = carregar_opcoes_filtros()
 except Exception as e:
     st.error(f"Erro ao conectar ao banco: {e}"); st.stop()
 
@@ -273,7 +265,7 @@ with aba_top:
         })
 
         idx = _df_selecionavel(exib, key=f"top_{key_sfx}")
-        if idx is not None:
+        if selecao_mudou(f"top_{key_sfx}", idx):
             prod = df.iloc[idx]
             st.session_state["dlg_ctx_est"] = {
                 "codprod": prod["CODPROD"],
@@ -322,7 +314,7 @@ with aba_top:
             "ULT_VENDA": "Última venda", "DIAS_PARADO": "Dias parado",
         })
         idx_sv = _df_selecionavel(sv_exib, key="sv_top_tbl", height=340)
-        if idx_sv is not None:
+        if selecao_mudou("sv_top_tbl", idx_sv):
             prod_sv = df_sv.iloc[idx_sv]
             st.session_state["dlg_ctx_est"] = {
                 "codprod": prod_sv["CODPROD"],
@@ -423,7 +415,7 @@ with aba_est:
             "EST_MINIMO": "Mínimo", "EST_MAXIMO": "Máximo",
         })
         idx_est = _df_selecionavel(exib, key="tbl_est_atual", height=420)
-        if idx_est is not None:
+        if selecao_mudou("tbl_est_atual", idx_est):
             prod = df_tbl.iloc[idx_est]
             st.session_state["dlg_ctx_est"] = {
                 "codprod": prod["CODPROD"],
@@ -488,14 +480,15 @@ with aba_parado:
         st.success(f"Nenhum produto com estoque parado há mais de {_dias_p} dias.")
     else:
         df_nunca = get_produtos_sem_venda(df_est, df_ult_venda)
-        col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns(5)
+        col_p1, col_p2, col_p3, col_p4, col_p5, col_p6 = st.columns(6)
         col_p1.metric("SKUs parados", len(df_parado))
         col_p2.metric("Qtd física total", f"{df_parado['QTD'].sum():.0f}")
         col_p3.metric("Valor custo", fmt_brl(df_parado["VALOR_CUSTO"].sum()))
+        col_p4.metric("Valor venda", fmt_brl(df_parado["VALOR_VENDA"].sum()))
         pct_par = df_parado["VALOR_CUSTO"].sum() / kpis["valor_custo"] * 100 \
             if kpis["valor_custo"] > 0 else 0
-        col_p4.metric("% do estoque total", f"{pct_par:.1f}%")
-        col_p5.metric("Nunca venderam", len(df_nunca),
+        col_p5.metric("% do estoque total", f"{pct_par:.1f}%")
+        col_p6.metric("Nunca venderam", len(df_nunca),
                       help="Produtos com estoque que nunca tiveram nenhuma venda PDV registrada — subconjunto dos parados.")
 
         # Gráfico por grupo
@@ -527,18 +520,19 @@ with aba_parado:
                    unsafe_allow_html=True)
 
         p_exib = df_parado[["CODPROD", "DESCRICAO", "GRUPO", "QTD", "CUSTO_UNIT",
-                              "VALOR_CUSTO", "ULT_VENDA", "DIAS_PARADO"]].copy()
+                              "VALOR_CUSTO", "VALOR_VENDA", "ULT_VENDA", "DIAS_PARADO"]].copy()
         p_exib["ULT_VENDA"]  = p_exib["ULT_VENDA"].dt.strftime("%d/%m/%Y").fillna("Nunca vendeu")
         p_exib["CUSTO_UNIT"] = p_exib["CUSTO_UNIT"].apply(fmt_brl)
         p_exib["VALOR_CUSTO"]= p_exib["VALOR_CUSTO"].apply(fmt_brl)
+        p_exib["VALOR_VENDA"]= p_exib["VALOR_VENDA"].apply(fmt_brl)
         p_exib["QTD"]        = p_exib["QTD"].apply(lambda x: f"{x:.1f}")
         p_exib = p_exib.rename(columns={
             "CODPROD": "Código", "DESCRICAO": "Produto", "GRUPO": "Grupo",
             "QTD": "Qtd", "CUSTO_UNIT": "Custo unit.", "VALOR_CUSTO": "Valor custo",
-            "ULT_VENDA": "Última venda", "DIAS_PARADO": "Dias parado",
+            "VALOR_VENDA": "Valor venda", "ULT_VENDA": "Última venda", "DIAS_PARADO": "Dias parado",
         })
         idx_p = _df_selecionavel(p_exib, key="tbl_parado", height=400)
-        if idx_p is not None:
+        if selecao_mudou("tbl_parado", idx_p):
             prod_p = df_parado.iloc[idx_p]
             st.session_state["dlg_ctx_est"] = {
                 "codprod": prod_p["CODPROD"],
@@ -581,7 +575,7 @@ with aba_ctrl:
                 "QTD": "Estoque", "EST_MINIMO": "Mínimo", "DT_ULT_ENTRADA": "Última entrada",
             })
             idx_r = _df_selecionavel(r_exib, key="tbl_ruptura", height=400)
-            if idx_r is not None:
+            if selecao_mudou("tbl_ruptura", idx_r):
                 prod_r = df_rupt.iloc[idx_r]
                 st.session_state["dlg_ctx_est"] = {
                     "codprod": prod_r["CODPROD"],
@@ -617,7 +611,7 @@ with aba_ctrl:
                 "VALOR_REPOR": "Custo p/ repor",
             })
             idx_a = _df_selecionavel(a_exib, key="tbl_abaixo", height=400)
-            if idx_a is not None:
+            if selecao_mudou("tbl_abaixo", idx_a):
                 prod_a = df_abx.iloc[idx_a]
                 st.session_state["dlg_ctx_est"] = {
                     "codprod": prod_a["CODPROD"],
@@ -718,7 +712,7 @@ with aba_abc:
             "PERC": "% do total", "ACUMULADO": "% Acumulado", "CLASSE": "Classe",
         })
         idx_abc = _df_selecionavel(abc_exib, key="tbl_abc", height=380)
-        if idx_abc is not None:
+        if selecao_mudou("tbl_abc", idx_abc):
             prod_abc = df_abc_fil.iloc[idx_abc]
             st.session_state["dlg_ctx_est"] = {
                 "codprod": prod_abc["CODPROD"],

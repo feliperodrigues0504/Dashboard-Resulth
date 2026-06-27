@@ -222,3 +222,54 @@ def fetch_sazonalidade(data_ini_str: str) -> pd.DataFrame:
         return fb_query(_SQL_SAZONALIDADE, (data_ini_str,))
     except Exception:
         return pd.DataFrame()
+
+
+# ── Forma de pagamento — base para rateio proporcional por pedido ────────────
+# PEDIDOC não tem forma de pagamento. O dado real está em MOVIREC, ligado ao
+# título (DOCUREC) via (CODEMPRESA,TIPODOCTO,CODDOCTO,CODCLIENTE) — e o título
+# liga ao pedido via DOCUREC.NUMDOCORIG, decodificado em Python (ver
+# core/domain/comercial.py::get_faturamento_por_forma_pgto e
+# core/domain/financeiro.py::numdocorig_to_numnf/get_itens_av, que já
+# resolvem esse mesmo encoding para o drill-down de itens).
+# TIPOMOV='01' = liquidação real (recebimento) — os demais tipos (02/04/05/06/
+# 07/08) são movimentos derivados (ex.: compensação de cheque) e contariam o
+# mesmo valor em dobro se incluídos.
+_SQL_LIQUIDACOES_NF_AV = """
+SELECT
+    TRIM(d.CODEMPRESA)   AS CODEMPRESA,
+    TRIM(d.TIPODOCTO)    AS TIPODOCTO,
+    TRIM(d.NUMDOCORIG)   AS NUMDOCORIG,
+    TRIM(mr.CODFORMAPGTO) AS CODFORMAPGTO,
+    SUM(mr.VALORMOV)     AS VALOR_LIQUIDADO
+FROM DOCUREC d
+JOIN MOVIREC mr ON TRIM(mr.CODEMPRESA)  = TRIM(d.CODEMPRESA)
+               AND TRIM(mr.TIPODOCTO)   = TRIM(d.TIPODOCTO)
+               AND TRIM(mr.CODDOCTO)    = TRIM(d.CODDOCTO)
+               AND TRIM(mr.CODCLIENTE)  = TRIM(d.CODCLIENTE)
+WHERE TRIM(d.TIPODOCTO) IN ('NF', 'AV')
+  AND TRIM(mr.TIPOMOV) = '01'
+  AND (mr.ESTORNADO IS NULL OR mr.ESTORNADO <> 'S')
+GROUP BY 1, 2, 3, 4
+"""
+
+_SQL_NF_PEDIDO_MAP = """
+SELECT TRIM(CODEMPRESA) AS CODEMPRESA, NUMNF,
+       TRIM(CODPEDIDO) AS CODPEDIDO, TRIM(TIPOPEDIDO) AS TIPOPEDIDO
+FROM NFSAIDC
+"""
+
+
+def fetch_liquidacoes_nf_av() -> pd.DataFrame:
+    """Liquidações reais (TIPOMOV='01') de todos os títulos NF/AV — base do rateio de forma de pagamento por pedido."""
+    try:
+        return fb_query(_SQL_LIQUIDACOES_NF_AV)
+    except Exception:
+        return pd.DataFrame()
+
+
+def fetch_nf_pedido_map() -> pd.DataFrame:
+    """Mapa NUMNF → (CODPEDIDO, TIPOPEDIDO) de toda a base (NFSAIDC) — usado para decodificar títulos do tipo NF."""
+    try:
+        return fb_query(_SQL_NF_PEDIDO_MAP)
+    except Exception:
+        return pd.DataFrame()

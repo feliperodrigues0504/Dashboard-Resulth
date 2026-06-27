@@ -16,4 +16,8 @@ openpyxl==3.1.5
 #   do pd.ExcelWriter(engine="openpyxl") em core/export.py. Não remover.
 apscheduler==3.11.2
 streamlit-aggrid==1.2.1.post2
+streamlit-elements==0.1.0
+# ^ streamlit-elements: grid arrastável/redimensionável (MUI + react-grid-layout)
+#   usado só em pages/00_Painel_Personalizado.py — dentro do grid não dá pra usar
+#   st.plotly_chart/st.dataframe, só componentes da própria lib (Nivo/MUI).
 python-dotenv==1.2.2

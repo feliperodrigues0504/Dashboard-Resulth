@@ -1,20 +1,20 @@
 # STATUS DE FUNCIONALIDADES — Dashboards Resulth / Cetel
 
 > Documento de rastreamento: compara tudo que o cliente pediu no protótipo
-> com o que foi implementado. Atualizar a cada sessão de desenvolvimento.
-> **Última atualização:** 2026-06-10
+> (`docs/PROTOTIPO_SOLICATAÇÕES_CETEL.md`) com o que está implementado.
+> **Última atualização:** 2026-06-25 — reescrito após auditoria completa de
+> código (não apenas registro manual); os módulos Estoque/Compras/Alertas
+> estavam marcados ❌ desde 2026-06-10, mas já foram implementados por
+> completo há várias sessões — este documento estava desatualizado.
 
 ---
 
 ## Legenda
 | Símbolo | Significado |
 |---------|-------------|
-| ✅ | Implementado e funcional |
-| 🔧 | Em implementação (sprint atual) |
-| ⏳ | Planejado — próxima sprint |
-| ❌ | Não iniciado |
-| 🔴 | Bloqueado / depende de dado externo |
-| 💡 | Sugestão própria (não estava no protótipo) |
+| ✅ | Implementado e funcional (verificado no código) |
+| ⚠️ | Parcialmente implementado / implementado com ressalva |
+| ❌ | Não implementado |
 
 ---
 
@@ -22,24 +22,18 @@
 
 | Funcionalidade | Status | Onde | Observação |
 |----------------|--------|------|------------|
-| Exportação Excel (.xlsx) | ✅ | Todos os módulos | Botão 📥 em cada aba |
-| Exportação PDF | ✅ | Todos os módulos | Botão 📄 em cada aba |
-| Botão de impressão | ✅ | Todos os módulos | Botão 🖨️ no topo |
-| Impressão com data de emissão | ✅ | CSS media print | Incluído no cabeçalho do PDF |
-| Impressão com período analisado | ✅ | CSS media print | Incluído no cabeçalho do PDF |
-| Drill-down progressivo | ✅ | Todos os módulos | Modal (@st.dialog) com níveis |
-| Filtro — Período | ✅ | Sidebar centralizado | components/sidebar_filtros.py (UI) + core/domain/filtros.py (lógica) |
-| Filtro — Empresa | ✅ | Sidebar centralizado | components/sidebar_filtros.py (UI) + core/domain/filtros.py (lógica) |
-| Filtro — Vendedor | ✅ | Sidebar centralizado | core/data/repositories/cadastros_repo.py → VENDEND |
-| Filtro — Cliente | ✅ | Sidebar centralizado | core/data/repositories/cadastros_repo.py → CLIENTE |
-| Filtro — Fornecedor | ✅ | Sidebar centralizado | core/data/repositories/cadastros_repo.py → FORNECE |
-| Filtro — Grupo de Produto | ✅ | Sidebar centralizado | core/data/repositories/cadastros_repo.py → GRUPROD |
-| Filtro — Marca | ✅ | Sidebar centralizado | core/data/repositories/cadastros_repo.py → CADFABR |
-| Comparativo: mês atual x mês anterior | ✅ | Aba Comparativos | Via MOVIREC/MOVIPAG |
-| Comparativo: mês atual x mesmo mês ano ant. | ✅ | Aba Comparativos | Via MOVIREC/MOVIPAG |
-| Comparativo: acumulado do ano | ✅ | Aba Comparativos | Ano atual vs ano anterior |
-| Comentários gerenciais | ✅ | Todos os módulos | DuckDB — aparece no PDF/Excel |
-| Performance / consultas otimizadas | ✅ | — | Cache 15min, dados sob demanda |
+| Exportação Excel (.xlsx) | ✅ | `components/widgets/exportacao.py` | `core/export.py::gerar_excel` |
+| Exportação PDF | ✅ | `components/widgets/exportacao.py` | `core/export.py::gerar_pdf` |
+| Botão de impressão | ✅ | `components/print_btn.py` | CSS `@media print` |
+| Impressão com data de emissão | ✅ | `core/export.py::_PDF.header` | |
+| Impressão com período analisado | ✅ | `core/export.py::_PDF.header` | |
+| Drill-down progressivo | ✅ | Todos os módulos | `@st.dialog`, ver seção por módulo |
+| Filtro — Período/Empresa/Vendedor/Cliente/Fornecedor/Grupo/Marca (7) | ✅ | `components/sidebar_filtros.py` | `_TODOS` lista os 7 |
+| Comparativo: mês atual x mês anterior | ✅ | Financeiro e Comercial | |
+| Comparativo: mês atual x mesmo mês ano anterior | ✅ | Financeiro e Comercial | |
+| Comparativo: acumulado do ano | ✅ | `core/domain/financeiro.py::get_acumulado_ano` | |
+| Comentários gerenciais | ✅ | `components/widgets/comentarios.py` | DuckDB, entra no PDF/Excel |
+| Performance / consultas otimizadas | ✅ | — | Cache 5–30min, `FIRST N`, índices preservados (ver `MANUAL_TECNICO.md`) |
 
 ---
 
@@ -47,201 +41,118 @@
 
 | Funcionalidade | Status | Observação |
 |----------------|--------|------------|
-| Tela inicial com módulos disponíveis | ✅ | app.py — cards por módulo |
-| Status de cada módulo (disponível/dev) | ✅ | Badge colorido |
-| Data/hora da última atualização | ❌ | Mostrar timestamp do último cache |
-| Sistema de Favoritos | ❌ | Fase 6 do ROADMAP |
-| Adicionar/remover dashboards | ❌ | Fase 6 do ROADMAP |
-| Reorganizar dashboards | ❌ | Fase 6 do ROADMAP |
-| Redimensionar dashboards | ❌ | Fase 6 — avaliar viabilidade Streamlit |
-| Salvar preferências do usuário | ❌ | Fase 6 do ROADMAP |
+| Tela inicial com módulos disponíveis | ✅ | `app.py` — cards por módulo |
+| Data/hora da última atualização | ⚠️ | Mostra a hora em que a página foi **renderizada** (`datetime.now()`), não a hora real do último fetch ao Firebird (que pode ser até 30 min mais antigo por causa do cache) — ver sugestão de indicador de frescor no plano de melhorias |
+| Sistema de Favoritos | ❌ | Não implementado |
+| Adicionar/remover dashboards | ❌ | Não implementado — seções fixas, só ocultáveis via checkbox na sidebar |
+| Reorganizar dashboards | ❌ | Não implementado |
+| Redimensionar dashboards | ❌ | Streamlit não tem suporte nativo a grid redimensionável; exigiria componente customizado |
+| Salvar preferências do usuário | ⚠️ | Implementado, mas só para "mostrar/ocultar seção" (`app.py::_pref`) — não há favoritos/posição/tamanho para salvar |
+
+**Nota:** este é o maior desvio real do que foi pedido — o requisito original descreve uma home totalmente personalizável (favoritos, drag-and-drop, redimensionamento), e o que existe é uma home fixa com seções que só podem ser mostradas/ocultadas. Funcional e bem executada, mas não é o que foi especificado.
 
 ---
 
-## MÓDULO FINANCEIRO
+## MÓDULO FINANCEIRO — `pages/01_Financeiro.py` + `core/domain/financeiro.py`
 
-### Saldo Bancário
-| Funcionalidade | Status | Tabelas | Observação |
-|----------------|--------|---------|------------|
-| Saldo individual por conta | ✅ | MOVIBAN | Aba Posição de Caixa |
-| Saldo consolidado | ✅ | MOVIBAN | KPI no topo |
-| Evolução dos últimos 30 dias | ✅ | SALDOST | Gráfico de área |
-
-### Fluxo de Caixa
-| Funcionalidade | Status | Tabelas | Observação |
-|----------------|--------|---------|------------|
-| Recebimentos previstos | ✅ | DOCUREC | Aba Fluxo |
-| Pagamentos previstos | ✅ | DOCUPAG | Aba Fluxo |
-| Projeção 7 dias | ✅ | DOCUREC+DOCUPAG | Tabela e gráfico |
-| Projeção 15 dias | ✅ | DOCUREC+DOCUPAG | Tabela e gráfico |
-| Projeção 30 dias | ✅ | DOCUREC+DOCUPAG | Tabela e gráfico |
-| Projeção 60 dias | ✅ | DOCUREC+DOCUPAG | Tabela e gráfico |
-| Projeção 90 dias | ✅ | DOCUREC+DOCUPAG | Tabela e gráfico |
-| Drill-down: Fluxo → Dia | ✅ | — | Modal |
-| Drill-down: Dia → Recebimentos/Pagamentos | ✅ | — | Modal lado a lado |
-| Drill-down: Recebimentos/Pagamentos → Documento | ✅ | — | Modal |
-| Drill-down: Documento → Título (histórico) | ✅ | MOVIREC/MOVIPAG | Modal |
-| **💡 Projeção de caixa acumulada (running balance)** | 🔧 | DOCUREC+DOCUPAG+MOVIBAN | Em implementação |
-
-### Contas a Receber
-| Funcionalidade | Status | Tabelas | Observação |
-|----------------|--------|---------|------------|
-| Valor total vencido | ✅ | DOCUREC | KPI + Aba AR |
-| Quantidade de títulos vencidos | ✅ | DOCUREC | KPI |
-| Ranking de clientes inadimplentes | ✅ | DOCUREC+CLIENTE | Tabela clicável |
-| Faixa 1-30 dias | ✅ | DOCUREC | Aging |
-| Faixa 31-60 dias | ✅ | DOCUREC | Aging |
-| Faixa 61-90 dias | ✅ | DOCUREC | Aging |
-| Acima de 90 dias | ✅ | DOCUREC | Aging |
-| Drill-down: Cliente → Títulos | ✅ | DOCUREC | Modal |
-| Drill-down: Título → Histórico | ✅ | MOVIREC | Modal |
-| Drill-down: Título NF → Itens produto | ✅ | NFSAIDI | Modal (só TIPODOCTO=NF) |
-| **💡 Concentração de inadimplência (top N = X%)** | 🔧 | DOCUREC | Em implementação |
-| **💡 PMR — Prazo Médio de Recebimento** | 🔧 | MOVIREC | Em implementação |
-| **💡 % Inadimplência / Faturamento** | ⏳ | DOCUREC+MOVIREC | Aguarda módulo Comercial |
-
-### Contas a Pagar
-| Funcionalidade | Status | Tabelas | Observação |
-|----------------|--------|---------|------------|
-| Vencimentos em 7 dias | ✅ | DOCUPAG | Aba AP |
-| Vencimentos em 15 dias | ✅ | DOCUPAG | Aba AP |
-| Vencimentos em 30 dias | ✅ | DOCUPAG | Aba AP |
-| Vencimentos em 60 dias | ✅ | DOCUPAG | Aba AP |
-| Vencimentos em 90 dias | ✅ | DOCUPAG | Aba AP |
-| Separação por fornecedor | ✅ | DOCUPAG+FORNECE | Gráfico + tabela |
-| Drill-down: Fornecedor → Títulos | ✅ | DOCUPAG | Modal |
-| Drill-down: Título → Histórico | ✅ | MOVIPAG | Modal |
-| **💡 PMP — Prazo Médio de Pagamento** | 🔧 | MOVIPAG | Em implementação |
-
-### Inadimplência
-| Funcionalidade | Status | Tabelas | Observação |
-|----------------|--------|---------|------------|
-| Valor vencido | ✅ | DOCUREC | KPI + Aba AR |
-| Evolução da inadimplência | ✅ | DuckDB snap | Snapshot diário — acumula com tempo |
-| **💡 Alertas de inadimplência crítica** | 🔧 | DOCUREC | Em implementação |
-
-### Posição de Caixa
-| Funcionalidade | Status | Tabelas | Observação |
-|----------------|--------|---------|------------|
-| Saldo Bancário Consolidado | ✅ | MOVIBAN | Aba Posição de Caixa |
-| Contas a Receber em Aberto | ✅ | DOCUREC | Aba Posição de Caixa |
-| Estoque ao Custo | ✅ | COMPPROD | Aba Posição de Caixa |
-| Contas a Pagar em Aberto | ✅ | DOCUPAG | Aba Posição de Caixa |
-| Capital Operacional (Caixa+Receber+Estoque−Pagar) | ✅ | — | Waterfall chart |
-| **💡 Índice de Liquidez Corrente** | ⏳ | — | (AR+Caixa)/AP |
-
-### Comparativos Históricos
-| Funcionalidade | Status | Fonte | Observação |
-|----------------|--------|-------|------------|
-| Recebimentos por mês (13 meses) | ✅ | MOVIREC | Gráfico de barras |
-| Pagamentos por mês (13 meses) | ✅ | MOVIPAG | Gráfico de barras |
-| Acumulado do ano vs ano anterior | ✅ | MOVIREC+MOVIPAG | Cards com delta |
-| Evolução da inadimplência (gráfico) | ✅ | DuckDB snap | Acumula dia a dia |
-| Inadimplência aberta por mês de vencimento | ✅ | DOCUREC | Títulos ainda abertos |
-
-### Funcionalidades Extra (💡 sugestão — não pedidas pelo cliente)
 | Funcionalidade | Status | Observação |
 |----------------|--------|------------|
-| **Alertas Inteligentes (painel visual)** | 🔧 | Caixa negativo 7d · AP amanhã · +90 dias |
-| **Projeção de caixa acumulada** | 🔧 | Saldo projetado dia a dia com piso configurável |
-| **PMR / PMP** | 🔧 | KPIs de prazo médio de recebimento e pagamento |
-| **Concentração de inadimplência** | 🔧 | Top N clientes = X% do total vencido |
-| **Mapa de calor de vencimentos** | 🔧 | Calendário com intensidade de vencimentos |
-| **Limites/Metas configuráveis** | 🔧 | Piso de caixa, alerta de inadimplência |
-| Timeline de relacionamento do cliente | ⏳ | Histórico de pagamentos por cliente |
-| % Inadimplência / Faturamento | ⏳ | Aguarda módulo Comercial |
-| Índice de Liquidez Corrente | ⏳ | (AR+Caixa)/AP |
-| Eficiência de cobrança (% liquidados) | ⏳ | % dos vencidos que foram pagos no período |
+| Saldo individual por conta | ✅ | `get_saldo_bancario()` |
+| Saldo consolidado | ✅ | `get_kpis()["saldo_bco"]` |
+| Evolução últimos 30 dias | ✅ | **Bug corrigido nesta auditoria**: `_SQL_EVOLUCAO_SALDO` filtrava `CODEMPRESA='01'` (0 linhas) em vez de `'00'` (92 linhas reais) — o gráfico nunca aparecia. Corrigido em `core/data/repositories/financeiro_repo.py` |
+| Recebimentos/Pagamentos previstos + projeção 7/15/30/60/90d | ✅ | `fluxo_projetado()` |
+| Drill-down Fluxo → Dia → Recebimentos/Pagamentos → Documento → Título | ✅ | `dialog_fluxo()` |
+| AR: valor vencido, qtd títulos, ranking inadimplentes, faixas 1-30/31-60/61-90/90+ | ✅ | `aging_por_cliente()`, `_classifica_faixa_ar()` |
+| AP: vencimentos 7/15/30/60/90d, separação por fornecedor | ✅ | `ap_por_fornecedor()` |
+| Inadimplência: valor vencido + evolução | ✅ | `get_evolucao_inadimplencia()` |
+| Posição de Caixa + Capital Operacional (Caixa+Receber+Estoque−Pagar) | ✅ | `get_kpis()["capital_op"]` — fórmula exata do requisito |
+| **Extras não pedidos:** PMR/PMP, projeção acumulada (running balance), concentração de inadimplência, mapa de calor de vencimentos, alertas inteligentes | ✅ | Todos implementados e em uso |
 
 ---
 
-## MÓDULO COMERCIAL
+## MÓDULO COMERCIAL — `pages/02_Comercial.py` + `core/domain/comercial.py`
+
 | Funcionalidade | Status | Observação |
 |----------------|--------|------------|
-| Meta comercial do mês | ✅ | |
-| Filtro por forma de pagamento (Dinheiro/PIX/Cartão/Boleto) | ✅ | |
-| Total faturado | ✅ | |
-| Percentual da meta atingido | ✅ | |
-| Projeção de fechamento do mês | ✅ | |
-| Faturamento por dia/semana/quinzena/mês | ✅ | |
-| Comparativo mês anterior | ✅ | |
-| Comparativo mesmo mês ano anterior | ✅ | |
-| Ticket médio geral | ✅ | |
-| Ticket médio por vendedor | ✅ | |
-| Top 10 clientes por faturamento | ✅ | |
-| Top 10 clientes por lucro bruto | ✅ | |
-| Clientes sem comprar 30/60/90/180 dias | ✅ | |
-| Top 10 clientes com queda de compras | ✅ | |
-| Concentração de faturamento por clientes | ✅ | |
-| Concentração de faturamento por produtos | ✅ | |
-| Sazonalidade 24 meses (faturamento/compras/margem) | ✅ | |
-| Drill-down: Faturamento → Cliente → Pedido → Itens | ✅ | |
-| **💡 Funil de Pedidos (taxa de conversão)** | ✅ | Aba Meta & Indicadores — `PEDIDOC` por status FATURADO |
-| **💡 Ranking de Vendedores** | ✅ | Aba Faturamento — pandas sobre `df_fat`, zero SQL extra |
-| **💡 Descontos Concedidos** | ✅ | Aba Faturamento — `PEDIDOI.DESCONTOVLR` por vendedor/cliente |
-| **💡 Clientes Novos vs Recorrentes** | ✅ | Aba Clientes — cruza `MIN(DATAFATURA)` histórica com período |
-| **💡 Curva ABC (Pareto formal)** | ✅ | Aba Concentração — classes A/B/C sobre concentração existente |
-
-## MÓDULO PRODUTOS
-| Funcionalidade | Status |
-|----------------|--------|
-| Top 10 por quantidade vendida | ❌ |
-| Top 10 por faturamento | ❌ |
-| Top 10 por lucro bruto | ❌ |
-| Produtos sem venda 30/60/90/180/365 dias | ❌ |
-
-## MÓDULO ESTOQUE
-| Funcionalidade | Status |
-|----------------|--------|
-| Qtd. de SKUs | ❌ |
-| Qtd. física em estoque | ❌ |
-| Valor de custo | ❌ |
-| Valor de venda | ❌ |
-| Estoque parado (faixas 30/60/90/180/365 dias) | ❌ |
-| Produtos abaixo do estoque mínimo | ❌ |
-| Produtos sem estoque (ruptura) | ❌ |
-| Curva ABC de estoque (A/B/C) | ❌ |
-| Giro de estoque por grupo de produtos | ❌ |
-| Drill-down: Estoque parado → Grupo → Produto → Movimentações | ❌ |
-
-## MÓDULO COMPRAS
-| Funcionalidade | Status |
-|----------------|--------|
-| Compras do mês | ❌ |
-| Evolução das compras (12 meses) | ❌ |
-| Top fornecedores por relevância | ❌ |
-| Dependência de fornecedores | ❌ |
-| Rentabilidade por fornecedor | ❌ |
-| Top 10 fornecedores por lucro bruto gerado | ❌ |
-| Alertas de compras (sem giro, estoque parado) | ❌ |
-| Drill-down: Fornecedor → Pedido de Compra → Itens | ❌ |
-
-## MÓDULO ALERTAS
-| Funcionalidade | Status |
-|----------------|--------|
-| Produtos sem venda acima de 180 dias | ❌ |
-| Produtos abaixo do estoque mínimo | ❌ |
-| Produtos sem estoque | ❌ |
-| Clientes com atraso superior a 90 dias | ❌ |
-| Clientes com queda de compras | ❌ |
-| Produtos comprados sem giro | ❌ |
-| Estoque parado por fornecedor | ❌ |
-| Drill-down direto a partir de cada alerta | ❌ |
+| Meta do mês + indicadores (total faturado, % meta, projeção fechamento) | ✅ | `get_meta_mes()`, `get_projecao_fechamento_mes()` |
+| **Filtro por forma de pagamento (Dinheiro/PIX/Débito/Crédito+parcelas)** | ❌ | **Não implementado — contradiz versão anterior deste doc, que marcava ✅ por engano.** `PEDIDOC` não tem coluna de forma de pagamento; o dado existe em `MOVIREC.CODFORMAPGTO` (confirmado, mesmo campo usado no histórico de título), mas nunca foi cruzado com o faturamento. Requer decisão de negócio: como atribuir a forma de pagamento a um pedido que pode ter sido liquidado em várias parcelas/formas? |
+| Faturamento por dia/semana/quinzena/mês + comparativos | ✅ | `get_faturamento_periodo()` |
+| Ticket médio geral e por vendedor | ✅ | `get_ticket_medio()` |
+| Top 10 clientes por faturamento e por lucro bruto | ✅ | `get_top_clientes_faturamento/lucro()` |
+| Clientes sem comprar 30/60/90/180 dias | ✅ | `get_clientes_sem_comprar()` |
+| Top 10 clientes com queda de compras (média 6m, últimos 30d, % queda, valor perdido) | ✅ | `get_clientes_queda_compras()` — todas as 4 colunas pedidas presentes |
+| Concentração de faturamento — clientes (top 10) e produtos (top 20) | ✅ | `get_concentracao_clientes/produtos()` |
+| **Sazonalidade 24 meses: Faturamento + Compras + Margem Bruta** | ⚠️ | **Só Faturamento implementado.** `get_sazonalidade()` tem comentário explícito no código dizendo que Compras/Margem ficariam "para quando o módulo Compras existir" — mas o módulo Compras já existe há várias sessões e isso nunca foi revisitado. Gap real, fechável com dados já disponíveis em `core.domain.compras`. |
+| Drill-down Faturamento → Cliente → Pedido → Itens | ✅ | `dialog_cliente()` |
+| **Extras não pedidos:** funil de pedidos, ranking de vendedores, descontos concedidos, clientes novos×recorrentes, curva ABC formal | ✅ | Todos implementados |
 
 ---
 
-## Resumo por módulo
+## MÓDULO PRODUTOS — incorporado em `pages/02_Comercial.py` (Top Clientes/Produtos) e `pages/03_Estoque.py` (Top Produtos)
 
-| Módulo | Pedido | Implementado | Extra 💡 | % (pedido) |
-|--------|--------|--------------|----------|------------|
-| Req. Gerais | 16 | 16 | — | 100% |
-| Tela Inicial | 8 | 2 | — | 25% |
-| Financeiro (cliente) | 28 | 28 | — | 100% |
-| Financeiro (extra 💡) | — | — | 5 em impl. | — |
-| Comercial (cliente) | 19 | 19 | — | 100% |
-| Comercial (extra 💡) | — | — | 5 | — |
-| Produtos | 4 | 0 | — | 0% |
-| Estoque | 10 | 0 | — | 0% |
-| Compras | 8 | 0 | — | 0% |
-| Alertas | 8 | 0 | — | 0% |
-| **Total cliente** | **101** | **65** | **10+** | **64%** |
+| Funcionalidade | Status | Observação |
+|----------------|--------|------------|
+| Top 10 por quantidade vendida | ✅ | `core/domain/estoque.py::get_top_produtos()` |
+| Top 10 por faturamento | ✅ | idem |
+| Top 10 por lucro bruto (Venda − CMV) | ✅ | idem |
+| Produtos sem venda — filtros 30/60/90/180/365 dias, top por valor parado | ✅ | `get_estoque_parado()` + `get_produtos_sem_venda()` |
+
+---
+
+## MÓDULO ESTOQUE — `pages/03_Estoque.py` + `core/domain/estoque.py`
+
+| Funcionalidade | Status | Observação |
+|----------------|--------|------------|
+| Qtd. de SKUs, qtd. física, valor de custo, valor de venda | ✅ | `get_kpis_estoque()` |
+| Estoque parado — faixas 30/60/90/180/365 — SKUs/qtd física/custo/**venda** | ✅ | **Coluna "Valor de venda" estava ausente do KPI e da tabela de detalhamento — corrigido nesta auditoria** (`pages/03_Estoque.py`) |
+| Produtos abaixo do mínimo / sem estoque (ruptura) | ✅ | `get_controle_operacional()` |
+| Curva ABC de estoque (A/B/C, SKUs, valor investido, % do total) | ✅ | `get_curva_abc_estoque()` + `core/domain/classificacao.py` (regra compartilhada com Comercial) |
+| Giro de estoque por grupo (grupo, valor médio, valor vendido, giro) | ✅ | `get_giro_por_grupo()` |
+| Drill-down Estoque Parado → Grupo → Produto → Movimentações | ✅ | `dialog_movimentacoes()` |
+
+---
+
+## MÓDULO COMPRAS — `pages/04_Compras.py` + `core/domain/compras.py`
+
+| Funcionalidade | Status | Observação |
+|----------------|--------|------------|
+| Compras do mês + evolução (12 meses) | ✅ | `get_historico_compras(13)` — busca 13 meses para garantir 12 meses fechados completos (mês corrente é parcial) |
+| Top fornecedores: compras, vendas geradas, lucro bruto, estoque, parado, participação | ✅ | `get_rentabilidade_fornecedor()` — as 6 métricas pedidas |
+| Dependência de fornecedores (participação individual + top 10) | ✅ | `get_compras_por_fornecedor()` |
+| Rentabilidade por fornecedor (compras/vendas/lucro/margem%) | ✅ | idem |
+| Top 10 fornecedores por lucro bruto gerado | ✅ | ordenação por `LUCRO_BRUTO` em `get_rentabilidade_fornecedor()` |
+| Alertas: produtos sem giro, estoque parado por fornecedor | ✅ | `get_produtos_sem_giro()`, `get_estoque_parado_por_fornecedor()` |
+| Drill-down Fornecedor → NF de entrada → Itens | ✅ | `dialog_fornecedor()` (a especificação cita "Pedido de Compra"; o ERP não tem pedido de compra formal — usa-se a NF de entrada, documento real disponível) |
+
+---
+
+## MÓDULO ALERTAS — `pages/05_Alertas.py` + `core/domain/alertas.py`
+
+| Funcionalidade | Status | Observação |
+|----------------|--------|------------|
+| Produtos sem venda > 180 dias | ✅ | `_alerta_produtos_nunca_vendidos()` |
+| Produtos abaixo do mínimo / sem estoque | ✅ | `_alerta_abaixo_minimo()`, `_alerta_ruptura()` |
+| Clientes com atraso > 90 dias | ✅ | regra central financeira (`get_alertas_financeiro`) |
+| Clientes com queda de compras | ✅ | `_alerta_clientes_queda_compras()` |
+| Produtos comprados sem giro | ✅ | `_alerta_produtos_sem_giro()` |
+| Estoque parado por fornecedor | ✅ | `_alerta_estoque_parado_fornecedor()` |
+| Drill-down direto a partir de cada alerta | ⚠️ | Os links levam à **página** do módulo certo (`st.page_link`), mas não pulam direto para a aba/registro específico do alerta — o usuário ainda precisa navegar manualmente até o item exato |
+| **Extra não pedido:** alerta de saúde do próprio sistema (snapshot diário atrasado) | ✅ | `_alerta_sistema` — adicionado nesta sessão |
+
+---
+
+## Resumo por módulo (recontado nesta auditoria)
+
+| Módulo | Itens do pedido original | ✅ | ⚠️ | ❌ |
+|--------|---------------------------|----|----|----|
+| Requisitos Gerais | 13 | 13 | 0 | 0 |
+| Tela Inicial | 7 | 1 | 2 | 4 |
+| Financeiro | ~30 | 30 | 0 | 0 |
+| Comercial | ~18 | 16 | 1 | 1 |
+| Produtos | 4 | 4 | 0 | 0 |
+| Estoque | 7 | 7 | 0 | 0 |
+| Compras | 7 | 7 | 0 | 0 |
+| Alertas | 8 | 7 | 1 | 0 |
+| **Total** | **~94** | **85** | **4** | **5** |
+
+A versão anterior deste documento (2026-06-10) registrava 64% de conclusão porque 4 módulos inteiros (Estoque, Compras, Produtos, Alertas) ainda não existiam naquela data. Hoje a conclusão real é de **~90%**, com gaps concentrados em: Tela Inicial (não é um dashboard de widgets reorganizáveis, é uma home fixa configurável) e 2 itens específicos do Comercial (forma de pagamento, sazonalidade de compras/margem).

@@ -20,6 +20,9 @@ FB_CHARSET  = os.environ.get("FB_CHARSET", "WIN1252")
 # DuckDB
 DUCK_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "store.duckdb")
 
+# Relatórios gerados automaticamente (ex.: relatório executivo semanal)
+REPORTS_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "relatorios")
+
 # App
 APP_TITLE = "Cetel — Dashboards Resulth"
 SYNC_INTERVAL_MINUTES = 15

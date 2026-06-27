@@ -516,6 +516,66 @@ def get_sazonalidade(meses: int = 24) -> pd.DataFrame:
     return df
 
 
+def get_faturamento_por_forma_pgto(df_fat: pd.DataFrame) -> pd.DataFrame:
+    """
+    Faturamento por forma de pagamento, no mesmo período/filtro de `df_fat`
+    (saída de get_faturamento(), já filtrada por período/empresa/vendedor/etc.
+    na página). PEDIDOC não guarda forma de pagamento — o valor real está nas
+    liquidações (MOVIREC), ligadas ao pedido via DOCUREC.NUMDOCORIG (NF ou AV).
+
+    Quando um pedido foi liquidado em mais de uma forma (pagamento dividido),
+    o faturamento desse pedido é RATEADO proporcionalmente ao peso de cada
+    forma nas liquidações reais — em vez de atribuído inteiro à forma
+    predominante. Pedidos sem nenhuma liquidação localizada (ex.: título tipo
+    CO/convênio, sem ligação direta com um pedido) não entram no rateio.
+
+    Retorna colunas: CODFORMAPGTO, VALOR_RATEADO, PCT.
+    """
+    if df_fat.empty:
+        return pd.DataFrame(columns=["CODFORMAPGTO", "VALOR_RATEADO", "PCT"])
+
+    liquid = repo.fetch_liquidacoes_nf_av()
+    if liquid.empty:
+        return pd.DataFrame(columns=["CODFORMAPGTO", "VALOR_RATEADO", "PCT"])
+
+    from core.domain.financeiro import numdocorig_to_numnf
+
+    def _decodifica(row) -> tuple[str, str] | None:
+        """Decodifica NUMDOCORIG em (CODPEDIDO, TIPOPEDIDO) — AV é direto; NF passa pelo mapa NFSAIDC."""
+        s = str(row["NUMDOCORIG"] or "").strip()
+        if row["TIPODOCTO"] == "AV":
+            if len(s) < 3:
+                return None
+            return s[2:], s[:2]
+        # TIPODOCTO == 'NF'
+        numnf = numdocorig_to_numnf(s)
+        if numnf is None:
+            return None
+        achado = mapa_nf[(mapa_nf["CODEMPRESA"] == row["CODEMPRESA"]) & (mapa_nf["NUMNF"] == numnf)]
+        if achado.empty:
+            return None
+        r = achado.iloc[0]
+        return r["CODPEDIDO"], r["TIPOPEDIDO"]
+
+    mapa_nf = repo.fetch_nf_pedido_map()
+    decodificado = liquid.apply(_decodifica, axis=1)
+    liquid = liquid[decodificado.notna()].copy()
+    liquid["CODPEDIDO"], liquid["TIPOPEDIDO"] = zip(*decodificado[decodificado.notna()])
+
+    pedidos = df_fat[["CODEMPRESA", "CODPEDIDO", "TIPOPEDIDO", "TOTALPEDIDO"]].drop_duplicates()
+    merged = liquid.merge(pedidos, on=["CODEMPRESA", "CODPEDIDO", "TIPOPEDIDO"], how="inner")
+    if merged.empty:
+        return pd.DataFrame(columns=["CODFORMAPGTO", "VALOR_RATEADO", "PCT"])
+
+    total_liquidado_pedido = merged.groupby(["CODEMPRESA", "CODPEDIDO", "TIPOPEDIDO"])["VALOR_LIQUIDADO"].transform("sum")
+    merged["VALOR_RATEADO"] = merged["VALOR_LIQUIDADO"] / total_liquidado_pedido * merged["TOTALPEDIDO"]
+
+    resultado = merged.groupby("CODFORMAPGTO")["VALOR_RATEADO"].sum().reset_index()
+    total = resultado["VALOR_RATEADO"].sum()
+    resultado["PCT"] = (resultado["VALOR_RATEADO"] / total * 100) if total > 0 else 0
+    return resultado.sort_values("VALOR_RATEADO", ascending=False).reset_index(drop=True)
+
+
 # ── Classificação auxiliar (UI) ───────────────────────────────────────────────
 
 def classifica_faixa_sem_comprar(dias: float) -> str:

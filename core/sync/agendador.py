@@ -40,6 +40,7 @@ def iniciar_agendador():
         """
         from apscheduler.schedulers.background import BackgroundScheduler
         from core.sync.snapshot import gravar_todos
+        from core.domain.relatorio_executivo import gravar_relatorio_semanal
 
         scheduler = BackgroundScheduler(timezone="America/Sao_Paulo")
         for hora, minuto in _HORARIOS_TENTATIVA:
@@ -50,9 +51,20 @@ def iniciar_agendador():
                 id=f"snapshot_diario_{hora:02d}{minuto:02d}",
                 replace_existing=True,
             )
+        # Relatório executivo consolidado: toda segunda-feira às 07:00, depois
+        # da janela de snapshot das 08h/11h/15h não ter rodado ainda — usa os
+        # dados ao vivo do Firebird na hora da geração, não snapshot.
+        scheduler.add_job(
+            gravar_relatorio_semanal,
+            trigger="cron",
+            day_of_week="mon", hour=7, minute=0,
+            id="relatorio_executivo_semanal",
+            replace_existing=True,
+        )
         scheduler.start()
         horarios_fmt = ", ".join(f"{h:02d}:{m:02d}" for h, m in _HORARIOS_TENTATIVA)
-        logger.info(f"[agendador] iniciado — tentativas de snapshot às {horarios_fmt}")
+        logger.info(f"[agendador] iniciado — tentativas de snapshot às {horarios_fmt}; "
+                    f"relatório executivo semanal às segundas 07:00")
 
         # Grava imediatamente o snapshot de hoje (se ainda não feito)
         try:

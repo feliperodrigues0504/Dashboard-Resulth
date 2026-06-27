@@ -7,6 +7,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+from datetime import date
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, ColumnsAutoSizeMode
 from components.bi_icons import inject_bi, bi, section_header, render_alerta_cards
 
@@ -22,15 +23,15 @@ from core.domain.financeiro import (
     get_alertas_financeiro, get_heatmap_vencimentos, get_itens_av,
     matriz_heatmap,
 )
-from core.data.repositories.cadastros_repo import fetch_opcoes_filtros
 from core.data.duckdb_store import init_store, get_config, set_config
 from core.sync.snapshot import get_evolucao_snapshot
-from components.sidebar_filtros import render_sidebar
+from components.sidebar_filtros import render_sidebar, carregar_opcoes_filtros
 from core.domain.filtros import aplicar
 from components.print_btn import render_print_css, render_print_button
 from components.metrics import fmt_brl, kpi_card
 from components.theme import COR_PRIM, COR_OK, COR_ALERTA, COR_PERIGO
-from components.widgets import df_selecionavel, make_widget_comentario, make_toolbar_export
+from components.widgets import df_selecionavel, selecao_mudou, make_widget_comentario, make_toolbar_export
+from core.export import gerar_pdf
 
 st.set_page_config(page_title="Financeiro", page_icon="💰", layout="wide")
 init_store()
@@ -138,6 +139,43 @@ _toolbar_export = make_toolbar_export(MODULO)
 _df_selecionavel = df_selecionavel
 
 
+def _btn_carta_cobranca(nome_cli: str, titulos: pd.DataFrame):
+    """
+    Botão "Gerar carta de cobrança" dentro do drill-down de AR: monta um PDF
+    pronto para enviar ao cliente com os títulos vencidos, sem precisar
+    montar a planilha manualmente — reaproveita core.export.gerar_pdf, só
+    com KPIs/seção específicos deste cliente em vez do módulo inteiro.
+    """
+    if titulos.empty:
+        return
+    total_vencido = float(titulos["SALDO_ABERTO"].sum())
+    kpis_carta = {
+        "Cliente": nome_cli,
+        "Total vencido": fmt_brl(total_vencido),
+        "Títulos vencidos": str(len(titulos)),
+        "Atraso máximo": f"{int(titulos['DIAS_ATRASO'].max())} dias",
+    }
+    tabela_carta = titulos[["CODDOCTO", "TIPODOCTO", "DT_VENCIMENTO", "SALDO_ABERTO", "DIAS_ATRASO"]].copy()
+    tabela_carta["DT_VENCIMENTO"] = tabela_carta["DT_VENCIMENTO"].dt.strftime("%d/%m/%Y")
+    tabela_carta["SALDO_ABERTO"]  = tabela_carta["SALDO_ABERTO"].apply(fmt_brl)
+    tabela_carta = tabela_carta.rename(columns={
+        "CODDOCTO": "Documento", "TIPODOCTO": "Tipo",
+        "DT_VENCIMENTO": "Vencimento", "SALDO_ABERTO": "Saldo", "DIAS_ATRASO": "Dias de atraso",
+    })
+    pdf_bytes = gerar_pdf(
+        titulo=f"Cobrança — {nome_cli}",
+        kpis=kpis_carta,
+        secoes={"Títulos em aberto": tabela_carta},
+        comentario="Solicitamos a regularização dos títulos abaixo o mais breve possível.",
+    )
+    st.download_button(
+        "📄 Gerar carta de cobrança (PDF)", data=bytes(pdf_bytes),
+        file_name=f"cobranca_{nome_cli.lower().replace(' ', '_')}_{date.today()}.pdf",
+        mime="application/pdf",
+        help="PDF pronto para enviar ao cliente com os títulos vencidos",
+        key=f"carta_cobranca_{nome_cli}")
+
+
 # ══════════════════════════════════════════════════════════════════
 #  DIALOGS — clique na linha para expandir o detalhe
 # ══════════════════════════════════════════════════════════════════
@@ -158,6 +196,8 @@ def dialog_ar():
     titulos = (vencidos[vencidos["CODCLIENTE"] == cod_cli]
                .sort_values("DIAS_ATRASO", ascending=False)
                .reset_index(drop=True))
+
+    _btn_carta_cobranca(nome_cli, titulos)
 
     t_exib = titulos[["CODDOCTO","TIPODOCTO","DT_VENCIMENTO",
                        "VALORDOCTO","SALDO_ABERTO","DIAS_ATRASO","FAIXA"]].copy()
@@ -301,13 +341,6 @@ def _carregar():
     return (get_contas_receber(), get_contas_pagar(),
             get_estoque_custo(), get_saldo_bancario(), get_evolucao_saldo())
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _carregar_opcoes():
-    """Carrega as opções de filtro (cadastros) e as deixa em session_state para components.sidebar_filtros usar."""
-    opc = fetch_opcoes_filtros()
-    st.session_state["opcoes_cadastros"] = opc
-    return opc
-
 @st.cache_data(ttl=900)
 def _carregar_comparativos():
     """Carrega os comparativos históricos de recebimentos, pagamentos e inadimplência (aba Comparativos)."""
@@ -321,7 +354,7 @@ def _carregar_acumulado():
 
 try:
     df_ar_raw, df_ap_raw, estoque, df_bco, df_evo = _carregar()
-    opcoes = _carregar_opcoes()
+    opcoes = carregar_opcoes_filtros()
 except Exception as e:
     st.error(f"Erro ao conectar ao banco: {e}"); st.stop()
 
@@ -534,7 +567,7 @@ with aba_ar:
     st.markdown(f"**{bi('clique',14,'#1f6bb5')} Clique em um cliente para abrir o detalhamento:**",
                 unsafe_allow_html=True)
     sel_cli = _grid(r_exib, key="ar_clientes", height=360)
-    if sel_cli:
+    if selecao_mudou("ar_clientes", sel_cli):
         st.session_state["dlg_ctx"] = {"cod_cli": sel_cli["Cód"], "nome_cli": sel_cli["Cliente"], "df_vencidos": vencidos}
         dialog_ar()
 
@@ -632,7 +665,7 @@ with aba_fluxo:
     st.markdown(f"**{bi('clique',14,'#1f6bb5')} Clique em um horizonte para detalhar:**",
                 unsafe_allow_html=True)
     sel_hor = _grid(df_fl_exib, key="fl_horizontes", height=240)
-    if sel_hor:
+    if selecao_mudou("fl_horizontes", sel_hor):
         h_nome = sel_hor["Horizonte"]
         h_dias = int(h_nome.split()[0])
         st.session_state["dlg_ctx"] = {"h_dias": h_dias, "h_nome": h_nome, "df_ar": df_ar, "df_ap": df_ap}
@@ -706,7 +739,7 @@ with aba_ap:
     st.markdown(f"**{bi('clique',14,'#1f6bb5')} Clique em um fornecedor para detalhar:**",
                 unsafe_allow_html=True)
     sel_forn = _grid(rf_exib, key="ap_fornec", height=320)
-    if sel_forn:
+    if selecao_mudou("ap_fornec", sel_forn):
         st.session_state["dlg_ctx"] = {"cod_forn": sel_forn["Cód"], "nome_forn": sel_forn["Fornecedor"], "df_ap_all": df_ap}
         dialog_ap()
 

@@ -2,15 +2,19 @@
 Tela Inicial — Dashboard Executivo
 KPIs consolidados · Alertas · Faturamento recente · Histórico · Módulos
 """
+import os
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-from datetime import date, datetime
+from datetime import date
 
 from components.bi_icons import inject_bi, bi, section_header
 from components.print_btn import render_print_css, render_print_button
 from components.metrics import fmt_brl, kpi_card
 from components.theme import COR_PRIM, COR_OK, COR_ALERTA, COR_PERIGO
+from components.freshness import marcar_frescor, rotulo_frescor
+from components.sidebar_filtros import carregar_opcoes_filtros
+from core.domain.spotlight import perfil_cliente, perfil_fornecedor
 from core.data.duckdb_store import init_store, get_preferencia, set_preferencia
 
 st.set_page_config(
@@ -37,6 +41,7 @@ inject_bi()
 @st.cache_data(ttl=600, show_spinner=False)
 def _home_financeiro():
     """Carrega AR, AP, saldo bancário e os KPIs consolidados do Financeiro para os cards do home."""
+    marcar_frescor("home_financeiro")
     try:
         from core.domain.financeiro import (
             get_contas_receber, get_contas_pagar,
@@ -55,6 +60,7 @@ def _home_financeiro():
 @st.cache_data(ttl=600, show_spinner=False)
 def _home_faturamento():
     """Carrega o faturamento dos últimos 2 meses, usado nos gráficos rápidos do home."""
+    marcar_frescor("home_faturamento")
     try:
         from core.domain.comercial import get_faturamento
         df = get_faturamento(meses_historico=2)
@@ -68,6 +74,7 @@ def _home_faturamento():
 @st.cache_data(ttl=600, show_spinner=False)
 def _home_estoque():
     """Carrega os KPIs consolidados de estoque para o card do home."""
+    marcar_frescor("home_estoque")
     try:
         from core.domain.estoque import get_kpis_estoque
         return get_kpis_estoque()
@@ -78,6 +85,7 @@ def _home_estoque():
 @st.cache_data(ttl=300, show_spinner=False)
 def _home_alertas():
     """Carrega todos os alertas ativos (últimos 3 meses + 1 dia futuro) e o resumo por nível/módulo, para o painel de alertas do home."""
+    marcar_frescor("home_alertas")
     try:
         from core.domain.alertas import get_todos_alertas, resumo_alertas
         ini  = (pd.Timestamp.now() - pd.DateOffset(months=3)).strftime("%Y-%m-%d")
@@ -86,6 +94,25 @@ def _home_alertas():
         return todos, resumo_alertas(todos)
     except Exception:
         return [], {"total": 0, "criticos": 0, "urgentes": 0, "atencoes": 0, "por_modulo": {}}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _home_meta():
+    """Carrega a meta de faturamento do mês e a projeção de fechamento, para o termômetro de meta do home."""
+    marcar_frescor("home_meta")
+    try:
+        from core.domain.comercial import get_meta_mes, get_projecao_fechamento_mes, get_faturamento
+        from core.data.duckdb_store import get_config
+        meta_configurada = float(get_config("meta_faturamento_mensal", 0) or 0)
+        meta_info = get_meta_mes(meta_configurada)
+        df = get_faturamento(meses_historico=1)
+        if not df.empty:
+            df["DATAFATURA"] = pd.to_datetime(df["DATAFATURA"], errors="coerce")
+        proj = get_projecao_fechamento_mes(df)
+        return meta_info, proj
+    except Exception:
+        return ({"meta": 0.0, "fonte": "", "mes_ano": ""},
+                {"total_ate_hoje": 0.0, "projecao": 0.0, "dias_passados": 0, "dias_no_mes": 30})
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -136,8 +163,13 @@ with st.spinner("Carregando painel executivo…"):
     kpis_est         = _home_estoque()
     alertas, res_al  = _home_alertas()
     fat_mes, fat_ant = _home_fat_mes()
+    meta_info, proj_meta = _home_meta()
     df_kpis_hist, df_inadimp_hist = _home_historico()
     status_snap      = _home_status_snapshot()
+
+    from core.sync.snapshot import get_comparativo_diario
+    comparativo_ontem = get_comparativo_diario(kpis_fin, fat_mes)
+    opcoes_busca = carregar_opcoes_filtros()
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -155,15 +187,18 @@ with st.sidebar:
             set_preferencia(key, "true" if novo else "false")
         return novo
 
+    show_busca    = _pref("home_busca",     "Busca Global (Spotlight)")
+    show_mudou    = _pref("home_mudou",     "O que mudou desde ontem")
     show_kpis     = _pref("home_kpis",      "KPIs Executivos")
     show_alertas  = _pref("home_alertas",   "Alertas Ativos")
     show_graficos = _pref("home_graficos",  "Gráficos Rápidos")
     show_historico= _pref("home_historico", "Histórico de KPIs", default=True)
     show_modulos  = _pref("home_modulos",   "Módulos do Sistema")
+    show_relatorio= _pref("home_relatorio", "Relatório Executivo")
 
     st.divider()
     st.markdown(f"### {bi('info',16,'#888')} Sistema", unsafe_allow_html=True)
-    st.caption(f"Atualizado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    st.caption(rotulo_frescor("home_financeiro", "home_faturamento", "home_estoque", "home_alertas"))
     st.caption("Banco: Resulth (Firebird 2.5) · R/O")
     st.caption("Store analítico: DuckDB")
 
@@ -208,7 +243,7 @@ with col_head:
         f"    {bi('house-fill',28,COR_PRIM)} Cetel — Painel Executivo"
         f"  </h1>"
         f"  <p style='margin:4px 0 0;color:#666;font-size:0.88em'>"
-        f"    {bi('calendar3',13,'#999')} {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        f"    {bi('calendar3',13,'#999')} {rotulo_frescor('home_financeiro','home_faturamento','home_estoque','home_alertas')}"
         f"    &nbsp;·&nbsp;"
         f"    <span style='color:{badge_cor};font-weight:600'>"
         f"      {bi('bell-fill',13,badge_cor)} {badge_txt}"
@@ -223,10 +258,146 @@ with col_print:
 
 
 # ══════════════════════════════════════════════════════════════════
+#  BUSCA GLOBAL (SPOTLIGHT) — perfil de cliente/fornecedor cruzando módulos
+# ══════════════════════════════════════════════════════════════════
+if show_busca:
+    st.markdown(section_header("Busca Global", "search", 4), unsafe_allow_html=True)
+
+    col_tipo, col_nome = st.columns([2, 6])
+    with col_tipo:
+        tipo_busca = st.radio("Buscar", ["Cliente", "Fornecedor"], horizontal=True,
+                              key="spotlight_tipo", label_visibility="collapsed")
+    with col_nome:
+        if tipo_busca == "Cliente":
+            opcoes_nome = opcoes_busca.get("clientes_df", pd.DataFrame(columns=["COD", "NOME"]))
+        else:
+            opcoes_nome = opcoes_busca.get("fornecedores_df", pd.DataFrame(columns=["COD", "NOME"]))
+        nome_sel = st.selectbox(
+            "Nome", opcoes_nome["NOME"].tolist() if not opcoes_nome.empty else [],
+            index=None, placeholder=f"Digite o nome do {tipo_busca.lower()}…",
+            key="spotlight_nome", label_visibility="collapsed")
+
+    if nome_sel:
+        cod_sel = opcoes_nome.loc[opcoes_nome["NOME"] == nome_sel, "COD"].iloc[0]
+
+        if tipo_busca == "Cliente":
+            p = perfil_cliente(cod_sel, nome_sel)
+            p1, p2, p3, p4 = st.columns(4)
+            with p1:
+                kpi_card("Saldo em aberto", p["total_aberto"], cor=COR_PRIM)
+            with p2:
+                kpi_card("Saldo vencido", p["total_vencido"],
+                         cor=COR_PERIGO if p["total_vencido"] > 0 else COR_OK)
+            with p3:
+                kpi_card("Títulos vencidos", p["titulos_vencidos"],
+                         cor=COR_PERIGO if p["titulos_vencidos"] > 0 else COR_OK,
+                         fmt=lambda v: f"{v:,.0f}")
+            with p4:
+                ult = p["ultima_compra"].strftime("%d/%m/%Y") if p["ultima_compra"] is not None and pd.notna(p["ultima_compra"]) else "—"
+                dias_txt = f" ({p['dias_sem_comprar']}d atrás)" if p["dias_sem_comprar"] else ""
+                st.markdown(
+                    f"<div style='background:#f8f9fa;border-radius:8px;padding:14px 16px;"
+                    f"border-top:4px solid {COR_PRIM};text-align:center'>"
+                    f"  <div style='font-size:1.1em;font-weight:700;color:{COR_PRIM}'>{ult}</div>"
+                    f"  <div style='color:#666;font-size:0.8em'>Última compra{dias_txt}</div>"
+                    f"</div>", unsafe_allow_html=True)
+            if p["situacao"]:
+                st.warning(" · ".join(f"⚠️ {s}" for s in p["situacao"]))
+            st.page_link("pages/01_Financeiro.py", label="Ver títulos no Financeiro →", icon="💰")
+            st.page_link("pages/02_Comercial.py", label="Ver histórico no Comercial →", icon="📈")
+        else:
+            p = perfil_fornecedor(cod_sel, nome_sel)
+            f1, f2, f3 = st.columns(3)
+            with f1:
+                kpi_card("Comprado (12m)", p["total_comprado_12m"], cor=COR_PRIM)
+            with f2:
+                kpi_card("Participação nas compras", p["participacao_pct"],
+                         cor=COR_ALERTA if p["participacao_pct"] >= 25 else COR_PRIM,
+                         fmt=lambda v: f"{v:.1f}%")
+            with f3:
+                kpi_card("Estoque parado (>90d)", p["estoque_parado_valor"],
+                         cor=COR_PERIGO if p["estoque_parado_valor"] > 0 else COR_OK)
+            st.page_link("pages/04_Compras.py", label="Ver detalhes em Compras →", icon="🛒")
+
+    st.divider()
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SEÇÃO 0 — O QUE MUDOU DESDE ONTEM (deltas do snapshot diário)
+# ══════════════════════════════════════════════════════════════════
+if show_mudou:
+    st.markdown(section_header("O que mudou desde ontem", "arrow-left-right", 4), unsafe_allow_html=True)
+
+    if comparativo_ontem is None:
+        st.info("Ainda não há snapshot anterior para comparar — disponível a partir do 2º dia de coleta "
+                "(snapshots automáticos às 08h/11h/15h).")
+    else:
+        ref_str = comparativo_ontem["data_referencia"].strftime("%d/%m")
+        rotulo_ref = "ontem" if comparativo_ontem["dias_atras"] == 1 else f"{comparativo_ontem['dias_atras']} dias atrás ({ref_str})"
+        st.caption(f"Comparado com {rotulo_ref}")
+
+        def _delta_card(col, label: str, delta: float, bom_se_sobe: bool):
+            """Card de variação: seta verde/vermelha conforme o delta for bom ou ruim para o negócio."""
+            subiu = delta >= 0
+            bom = subiu if bom_se_sobe else not subiu
+            cor = COR_OK if bom else COR_PERIGO
+            seta = "arrow-up-circle-fill" if subiu else "arrow-down-circle-fill"
+            with col:
+                st.markdown(
+                    f"<div style='background:#f8f9fa;border-radius:8px;padding:12px 14px;"
+                    f"border-top:4px solid {cor};text-align:center'>"
+                    f"  <div style='font-size:1.3em;font-weight:700;color:{cor}'>"
+                    f"    {bi(seta,16,cor)} {fmt_brl(abs(delta))}"
+                    f"  </div>"
+                    f"  <div style='color:#666;font-size:0.8em'>{label}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+        m1, m2, m3, m4 = st.columns(4)
+        _delta_card(m1, "Caixa",          comparativo_ontem["delta_saldo_bco"],  bom_se_sobe=True)
+        _delta_card(m2, "Faturamento mês", comparativo_ontem["delta_fat_mes"],    bom_se_sobe=True)
+        _delta_card(m3, "AR Vencido",      comparativo_ontem["delta_vencido_ar"], bom_se_sobe=False)
+        _delta_card(m4, "Capital Operacional", comparativo_ontem["delta_capital_op"], bom_se_sobe=True)
+
+    st.divider()
+
+
+# ══════════════════════════════════════════════════════════════════
 #  SEÇÃO 1 — KPIs EXECUTIVOS
 # ══════════════════════════════════════════════════════════════════
 if show_kpis:
     st.markdown(section_header("KPIs Executivos", "bar-chart-fill", 4), unsafe_allow_html=True)
+
+    # ── Termômetro de Meta — visão imediata sem precisar abrir o Comercial ──
+    meta_valor = float(meta_info.get("meta", 0) or 0)
+    if meta_valor > 0:
+        total_hoje = proj_meta.get("total_ate_hoje", 0.0)
+        projecao   = proj_meta.get("projecao", 0.0)
+        eixo_max   = max(meta_valor * 1.2, projecao * 1.1, 1.0)
+        fig_gauge = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
+            value=total_hoje,
+            number={"valueformat": ",.0f", "prefix": "R$ "},
+            delta={"reference": meta_valor, "valueformat": ",.0f", "increasing": {"color": COR_OK},
+                   "decreasing": {"color": COR_PERIGO}},
+            gauge={
+                "axis": {"range": [0, eixo_max]},
+                "bar": {"color": COR_PRIM},
+                "steps": [
+                    {"range": [0, meta_valor * 0.7], "color": "#fdf0f0"},
+                    {"range": [meta_valor * 0.7, meta_valor], "color": "#fef6ed"},
+                    {"range": [meta_valor, eixo_max], "color": "#e6f4ea"},
+                ],
+                "threshold": {"line": {"color": COR_PERIGO, "width": 3}, "thickness": 0.85, "value": meta_valor},
+            },
+            title={"text": (f"Meta do mês ({meta_info.get('mes_ano','')}) — "
+                            f"projeção de fechamento: {fmt_brl(projecao)}"),
+                   "font": {"size": 13}},
+        ))
+        fig_gauge.update_layout(height=200, margin=dict(l=30, r=30, t=55, b=10))
+        st.plotly_chart(fig_gauge, use_container_width=True)
+    else:
+        st.caption(f"{bi('info',13,'#888')} Meta de faturamento ainda não configurada — "
+                   f"defina em Comercial → Meta & Indicadores.", unsafe_allow_html=True)
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     al_cor = COR_PERIGO if res_al["criticos"] > 0 else (COR_ALERTA if res_al["urgentes"] > 0 else COR_OK)
@@ -536,6 +707,39 @@ if show_modulos:
                 f"  {badge_html}"
                 f"</div>", unsafe_allow_html=True)
             st.page_link(mod["link"], label=f"Abrir {mod['nome']}", icon="▶️")
+
+    st.divider()
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SEÇÃO 6 — RELATÓRIO EXECUTIVO CONSOLIDADO
+# ══════════════════════════════════════════════════════════════════
+if show_relatorio:
+    st.markdown(section_header("Relatório Executivo", "file-earmark-pdf", 4), unsafe_allow_html=True)
+    st.caption("PDF consolidado — Financeiro, Comercial, Estoque e Alertas críticos. "
+               "Gerado automaticamente toda segunda-feira às 07:00, ou a qualquer momento abaixo.")
+
+    from core.domain.relatorio_executivo import gerar_relatorio_executivo, ultimo_relatorio
+
+    col_rel1, col_rel2 = st.columns(2)
+    with col_rel1:
+        if st.button("🔄 Gerar agora", key="gerar_relatorio_agora"):
+            with st.spinner("Consolidando dados dos 4 módulos…"):
+                pdf_bytes = gerar_relatorio_executivo()
+            st.download_button(
+                "📄 Baixar relatório gerado agora", data=bytes(pdf_bytes),
+                file_name=f"relatorio_executivo_{date.today()}.pdf",
+                mime="application/pdf", key="download_relatorio_agora")
+    with col_rel2:
+        ultimo = ultimo_relatorio()
+        if ultimo:
+            st.download_button(
+                f"📄 Baixar último relatório automático ({ultimo['data']})",
+                data=ultimo["bytes"],
+                file_name=os.path.basename(ultimo["caminho"]),
+                mime="application/pdf", key="download_ultimo_relatorio")
+        else:
+            st.caption("Nenhum relatório automático gravado ainda — o primeiro sai na próxima segunda-feira às 07h.")
 
     st.divider()
 

@@ -5,8 +5,9 @@ está em core/domain/filtros.py.
 
 Uso em qualquer módulo:
 
-    from components.sidebar_filtros import render_sidebar
+    from components.sidebar_filtros import render_sidebar, carregar_opcoes_filtros
     from core.domain.filtros import aplicar
+    opcoes  = carregar_opcoes_filtros()
     filtros = render_sidebar(opcoes, visiveis=['periodo','empresa','vendedor','cliente'])
     df_ar   = aplicar(df_ar,  filtros, mapa={'empresa':'CODEMPRESA','vendedor':'CODVENDEDOR','cliente':'CODCLIENTE'})
     df_ap   = aplicar(df_ap,  filtros, mapa={'empresa':'CODEMPRESA','fornecedor':'CODFORNEC'})
@@ -14,6 +15,8 @@ Uso em qualquer módulo:
 from __future__ import annotations
 from datetime import date
 import streamlit as st
+
+from core.data.repositories.cadastros_repo import fetch_opcoes_filtros
 
 # Todos os filtros disponíveis e a ordem em que aparecem
 _TODOS = ["periodo", "empresa", "vendedor", "cliente", "fornecedor", "grupo", "marca"]
@@ -114,3 +117,18 @@ def render_sidebar(opcoes: dict,
 def get_filtros() -> dict:
     """Retorna os filtros ativos sem renderizar nada (para usar em outros contextos)."""
     return dict(st.session_state.get(_KEY, _estado_inicial()))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def carregar_opcoes_filtros() -> dict:
+    """
+    Carrega as opções de filtro (cadastros: empresas, vendedores, clientes,
+    fornecedores, grupos, marcas) e as deixa em session_state para
+    render_sidebar() usar. Antes desta consolidação, esta função era
+    copiada de forma idêntica nas 5 páginas (Financeiro, Comercial, Estoque,
+    Compras, Alertas) — cada uma com seu próprio cache, refazendo a mesma
+    busca. Compartilhada aqui, o cache também passa a ser compartilhado.
+    """
+    opc = fetch_opcoes_filtros()
+    st.session_state["opcoes_cadastros"] = opc
+    return opc

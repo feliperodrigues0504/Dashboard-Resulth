@@ -18,13 +18,12 @@ from core.domain.compras import (
     get_estoque_parado_por_fornecedor, get_kpis_compras,
     get_relprfo, get_estoque_prod,
 )
-from core.data.repositories.cadastros_repo import fetch_opcoes_filtros
 from core.data.duckdb_store import init_store
-from components.sidebar_filtros import render_sidebar
+from components.sidebar_filtros import render_sidebar, carregar_opcoes_filtros
 from components.print_btn import render_print_css, render_print_button
 from components.metrics import fmt_brl, kpi_card
 from components.theme import COR_PRIM, COR_OK, COR_ALERTA, COR_PERIGO
-from components.widgets import df_selecionavel, make_widget_comentario, make_toolbar_export
+from components.widgets import df_selecionavel, selecao_mudou, make_widget_comentario, make_toolbar_export
 
 st.set_page_config(page_title="Compras", page_icon="🛒", layout="wide")
 init_store()
@@ -142,17 +141,10 @@ def _carregar_parado_forn(dias, df_relprfo):
     """Carrega o estoque parado agrupado por fornecedor principal (aba Estoque Parado)."""
     return get_estoque_parado_por_fornecedor(dias, df_relprfo)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _carregar_opcoes():
-    """Carrega as opções de filtro (cadastros) e as deixa em session_state para components.sidebar_filtros usar."""
-    opc = fetch_opcoes_filtros()
-    st.session_state["opcoes_cadastros"] = opc
-    return opc
-
 
 try:
     df_hist  = _carregar_historico()
-    opcoes   = _carregar_opcoes()
+    opcoes   = carregar_opcoes_filtros()
 except Exception as e:
     st.error(f"Erro ao conectar ao banco: {e}"); st.stop()
 
@@ -317,7 +309,7 @@ with aba_forn:
             "PARTICIPACAO": "Participação", "PARTICIPACAO_ACUM": "% Acumulado",
         })
         idx_f = _df_selecionavel(f_exib, key="tbl_fornec", height=380)
-        if idx_f is not None:
+        if selecao_mudou("tbl_fornec", idx_f):
             sel = df_forn.iloc[idx_f]
             st.session_state["dlg_ctx_cmp"] = {
                 "codfornec": sel["CODFORNEC"],
@@ -509,7 +501,7 @@ with aba_rent:
             "ESTOQUE_SKUS": "SKUs estoque", "ESTOQUE_VALOR": "Valor em estoque",
         })
         idx_r = _df_selecionavel(r_exib, key="tbl_rent", height=380)
-        if idx_r is not None:
+        if selecao_mudou("tbl_rent", idx_r):
             sel = df_rent.iloc[idx_r]
             st.session_state["dlg_ctx_cmp"] = {
                 "codfornec": sel["CODFORNEC"],

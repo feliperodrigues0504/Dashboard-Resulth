@@ -267,7 +267,7 @@ def get_titulos_do_dia(df_ar: pd.DataFrame, df_ap: pd.DataFrame,
 
 # ── Drill-down: itens de NF/pedido AV vinculados ao título ───────────────────
 
-def _numdocorig_to_numnf(numdocorig: str) -> int | None:
+def numdocorig_to_numnf(numdocorig: str) -> int | None:
     """
     Converte NUMDOCORIG para o inteiro NUMNF.
     Formato: 'VP' + NUMNF(8 dígitos zero-padded) + '01'
@@ -291,7 +291,7 @@ def get_itens_nf(codempresa: str, tipodocto: str, numdocorig: str) -> pd.DataFra
     """
     if tipodocto.strip().upper() != "NF":
         return pd.DataFrame()
-    numnf = _numdocorig_to_numnf(numdocorig)
+    numnf = numdocorig_to_numnf(numdocorig)
     if numnf is None:
         return pd.DataFrame()
     return repo.fetch_itens_nf(codempresa, numnf)

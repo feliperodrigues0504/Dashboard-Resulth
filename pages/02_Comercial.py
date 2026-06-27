@@ -18,16 +18,16 @@ from core.domain.comercial import (
     get_ultima_compra_clientes, get_clientes_sem_comprar, get_clientes_queda_compras,
     get_clientes_novos_recorrentes,
     get_concentracao_clientes, get_concentracao_produtos, get_sazonalidade,
+    get_faturamento_por_forma_pgto,
     classifica_faixa_sem_comprar, classifica_curva_abc, resumo_curva_abc,
 )
-from core.data.repositories.cadastros_repo import fetch_opcoes_filtros
 from core.data.duckdb_store import init_store, get_config, set_config
-from components.sidebar_filtros import render_sidebar
+from components.sidebar_filtros import render_sidebar, carregar_opcoes_filtros
 from core.domain.filtros import aplicar
 from components.print_btn import render_print_css, render_print_button
 from components.metrics import fmt_brl, kpi_card
 from components.theme import COR_PRIM, COR_OK, COR_ALERTA, COR_PERIGO
-from components.widgets import df_selecionavel, make_widget_comentario, make_toolbar_export
+from components.widgets import df_selecionavel, selecao_mudou, make_widget_comentario, make_toolbar_export
 
 st.set_page_config(page_title="Comercial", page_icon="🛒", layout="wide")
 init_store()
@@ -103,13 +103,6 @@ def _carregar_faturamento():
     """Carrega os últimos 25 meses de faturamento — base para todas as análises da página."""
     return get_faturamento(meses_historico=25)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _carregar_opcoes():
-    """Carrega as opções de filtro (cadastros) e as deixa em session_state para components.sidebar_filtros usar."""
-    opc = fetch_opcoes_filtros()
-    st.session_state["opcoes_cadastros"] = opc
-    return opc
-
 @st.cache_data(ttl=900, show_spinner=False)
 def _carregar_itens(data_ini_str, data_fim_str):
     """Carrega os itens de pedido faturados no período (para lucro bruto e top produtos)."""
@@ -138,7 +131,7 @@ def _carregar_sazonalidade():
 
 try:
     df_fat_raw = _carregar_faturamento()
-    opcoes = _carregar_opcoes()
+    opcoes = carregar_opcoes_filtros()
 except Exception as e:
     st.error(f"Erro ao conectar ao banco: {e}"); st.stop()
 
@@ -183,9 +176,10 @@ with c3: kpi_card("Pedidos faturados",     kpis["qtd_pedidos"], cor=COR_OK, fmt=
 with c4: kpi_card("Clientes atendidos",    kpis["n_clientes"], cor=COR_OK, fmt=_fmt_int)
 st.divider()
 
-aba_meta, aba_fat, aba_cli, aba_conc, aba_saz, aba_cfg = st.tabs([
+aba_meta, aba_fat, aba_pgto, aba_cli, aba_conc, aba_saz, aba_cfg = st.tabs([
     "🎯 Meta & Indicadores",
     "📈 Faturamento",
+    "💳 Forma de Pagamento",
     "👥 Clientes",
     "🧩 Concentração",
     "📅 Sazonalidade",
@@ -409,6 +403,69 @@ with aba_fat:
 
 
 # ══════════════════════════════════════════════════════════════════
+#  ABA — FORMA DE PAGAMENTO
+# ══════════════════════════════════════════════════════════════════
+with aba_pgto:
+    st.markdown(section_header("Faturamento por Forma de Pagamento", "credit-card", 4), unsafe_allow_html=True)
+    st.caption(
+        "Rateio proporcional: quando um pedido foi liquidado em mais de uma forma de "
+        "pagamento, o valor é dividido entre elas proporcionalmente ao peso de cada uma "
+        "nas liquidações reais (MOVIREC) — em vez de atribuído inteiro a uma só forma."
+    )
+
+    df_pgto = get_faturamento_por_forma_pgto(df_fat)
+
+    if df_pgto.empty:
+        st.info("Nenhuma liquidação rastreável encontrada para o período filtrado "
+                "(títulos de convênio ou ainda em aberto não entram neste rateio).")
+    else:
+        total_fat_periodo = kpis["total_faturado"]
+        cobertura = (df_pgto["VALOR_RATEADO"].sum() / total_fat_periodo * 100
+                     if total_fat_periodo > 0 else 0)
+
+        # O ERP só identifica a forma de pagamento por código (ex.: '03', '07',
+        # 'CK') — não existe cadastro com os nomes. Mapeamento editável,
+        # salvo no DuckDB (mesmo padrão de meta_faturamento_mensal/piso_caixa).
+        def _label_forma(codigo: str) -> str:
+            cod_chave = codigo.strip() if codigo and codigo.strip() else "EM_BRANCO"
+            return get_config(f"forma_pgto_label_{cod_chave}", codigo or "(sem código)")
+
+        df_pgto_exib = df_pgto.copy()
+        df_pgto_exib["FORMA"] = df_pgto_exib["CODFORMAPGTO"].apply(_label_forma)
+
+        col_pg1, col_pg2 = st.columns([3, 2])
+        with col_pg1:
+            fig_pgto = px.pie(df_pgto_exib, names="FORMA", values="VALOR_RATEADO",
+                              title="Distribuição por forma de pagamento", hole=0.4)
+            fig_pgto.update_traces(textinfo="label+percent")
+            fig_pgto.update_layout(height=320, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig_pgto, use_container_width=True)
+        with col_pg2:
+            tab_exib = df_pgto_exib[["FORMA", "VALOR_RATEADO", "PCT"]].copy()
+            tab_exib["VALOR_RATEADO"] = tab_exib["VALOR_RATEADO"].apply(fmt_brl)
+            tab_exib["PCT"] = tab_exib["PCT"].apply(lambda v: f"{v:.1f}%")
+            st.dataframe(
+                tab_exib.rename(columns={"FORMA": "Forma", "VALOR_RATEADO": "Valor", "PCT": "%"}),
+                use_container_width=True, hide_index=True)
+            st.caption(f"Cobertura: {cobertura:.0f}% do faturamento do período tem liquidação "
+                       f"rastreada até uma forma de pagamento. O restante são títulos de "
+                       f"convênio (CO) ou ainda em aberto, sem liquidação para ratear.")
+
+        with st.expander("⚙️ Mapear nomes das formas de pagamento (códigos do ERP)"):
+            st.caption("O ERP identifica a forma de pagamento só por código — dê um nome para "
+                       "cada uma (ex.: Dinheiro, PIX, Cartão Débito). Fica salvo e passa a "
+                       "valer para todos os relatórios deste módulo.")
+            for codigo in sorted(df_pgto["CODFORMAPGTO"].unique()):
+                cod_chave = codigo.strip() if codigo and codigo.strip() else "EM_BRANCO"
+                atual = get_config(f"forma_pgto_label_{cod_chave}", codigo or "(sem código)")
+                novo = st.text_input(f"Código '{codigo or '(em branco)'}'", value=atual,
+                                     key=f"forma_pgto_input_{cod_chave}")
+                if novo != atual:
+                    set_config(f"forma_pgto_label_{cod_chave}", novo)
+                    st.rerun()
+
+
+# ══════════════════════════════════════════════════════════════════
 #  ABA 3 — CLIENTES
 # ══════════════════════════════════════════════════════════════════
 with aba_cli:
@@ -484,7 +541,7 @@ with aba_cli:
         st.markdown(f"**{bi('clique',14,COR_PRIM)} Selecione um cliente para ver o histórico de pedidos:**",
                     unsafe_allow_html=True)
         idx_cli = _df_selecionavel(t_fmt, key="cli_top_sel", height=240)
-        if idx_cli is not None:
+        if selecao_mudou("cli_top_sel", idx_cli):
             sel = top_cli.iloc[idx_cli]
             st.session_state["dlg_ctx_com"] = {
                 "cod_cli": sel["CODCLIENTE"], "nome_cli": sel["NOME_CLIENTE"], "df_fat": df_fat_raw,

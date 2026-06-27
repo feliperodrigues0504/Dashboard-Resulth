@@ -82,11 +82,15 @@ ORDER BY m.DATAMOV DESC, m.NUMORD DESC
 """
 
 # ── Evolução do saldo (SALDOST) ───────────────────────────────────────────────
-
+# Bug corrigido nesta auditoria: filtrava CODEMPRESA='01' (filial, 0 linhas)
+# em vez de '00' (matriz, onde os 92 registros de saldo diário realmente
+# estão) — por isso o gráfico de evolução de saldo nunca aparecia (condição
+# "if not df.empty" na UI nunca era verdadeira). Confirmado via
+# RDB$RELATION_FIELDS + contagem por empresa antes de corrigir.
 _SQL_EVOLUCAO_SALDO = """
 SELECT DATASALDO, SALDO
 FROM   SALDOST
-WHERE  TRIM(CODEMPRESA) = '01'
+WHERE  TRIM(CODEMPRESA) = '00'
 ORDER  BY DATASALDO DESC
 """
 

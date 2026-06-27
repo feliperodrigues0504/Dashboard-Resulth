@@ -196,6 +196,39 @@ def get_evolucao_kpis() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def get_comparativo_diario(kpis_atual: dict, fat_mes_atual: float) -> dict | None:
+    """
+    Compara os KPIs de AGORA (passados pelo chamador, já calculados ao vivo)
+    com o snapshot diário mais recente anterior a hoje (snap_kpis_diario) —
+    base do card "O que mudou desde ontem" do home.
+
+    Usa o snapshot mais recente < hoje (não necessariamente "ontem" literal)
+    para não quebrar em fins de semana/feriados sem coleta. Retorna None se
+    ainda não há nenhum snapshot anterior a hoje (app recém-instalado).
+    """
+    try:
+        r = duck_query(
+            "SELECT * FROM snap_kpis_diario WHERE data < ? ORDER BY data DESC LIMIT 1",
+            [str(date.today())],
+        )
+    except Exception as e:
+        print(f"[get_comparativo_diario] erro: {e}")
+        return None
+    if r.empty:
+        return None
+
+    ref = r.iloc[0]
+    data_ref = pd.Timestamp(ref["data"]).date()
+    return {
+        "data_referencia": data_ref,
+        "dias_atras": (date.today() - data_ref).days,
+        "delta_saldo_bco":  float(kpis_atual.get("saldo_bco", 0))    - float(ref["saldo_bco"]),
+        "delta_vencido_ar": float(kpis_atual.get("vencido_ar", 0))   - float(ref["vencido_ar"]),
+        "delta_capital_op": float(kpis_atual.get("capital_op", 0))   - float(ref["capital_op"]),
+        "delta_fat_mes":    float(fat_mes_atual)                    - float(ref["fat_mes"]),
+    }
+
+
 def status_snapshot() -> dict:
     """
     Verifica a saúde do snapshot diário (agendado para 08:00 — ver

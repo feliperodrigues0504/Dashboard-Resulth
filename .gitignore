@@ -5,9 +5,15 @@
 data/*.duckdb
 data/*.duckdb.wal
 
+# Relatórios executivos gerados automaticamente (ver core/domain/relatorio_executivo.py)
+data/relatorios/
+
 # Python
 __pycache__/
 *.pyc
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Logs de execução local (debug em desenvolvimento)
+streamlit_dev.log
