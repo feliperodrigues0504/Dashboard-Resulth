@@ -1,9 +1,10 @@
 """
 core/dashboard/widgets_geral.py — widgets cross-módulo do Painel Personalizado
-("O que mudou desde ontem", ver app.py). Busca Global (Spotlight) e o atalho
-de Relatório Executivo não entraram aqui: são ferramentas interativas (busca
-com texto, botão de download), não widgets de exibição — não fazem sentido
-como card arrastável de dados, então ficam só na Home original.
+("O que mudou desde ontem", histórico de KPIs, navegação entre módulos).
+Busca Global (Spotlight) e o atalho de Relatório Executivo não entraram
+aqui: são ferramentas interativas (busca com texto, botão de download), não
+widgets de exibição — não fazem sentido como card arrastável de dados, então
+ficam como seções fixas em app.py, fora do grid.
 """
 from __future__ import annotations
 from datetime import date
@@ -11,7 +12,7 @@ from datetime import date
 from core.dashboard import adapters as ad
 from core.domain.financeiro import get_contas_receber, get_contas_pagar, get_estoque_custo, get_saldo_bancario, get_kpis
 from core.domain.comercial import get_faturamento
-from core.sync.snapshot import get_comparativo_diario
+from core.sync.snapshot import get_comparativo_diario, get_evolucao_kpis
 
 
 def _kpis_atuais_e_fat_mes():
@@ -38,6 +39,26 @@ def _fetch_delta(chave: str, formatador: str = "brl"):
     return _fetch
 
 
+def _fetch_historico_caixa_ar(data_ini: date, data_fim: date) -> dict:
+    df = get_evolucao_kpis()
+    return ad.multiline_de_df(df, "data", {"vencido_ar": "AR Vencido", "saldo_bco": "Caixa"})
+
+
+def _fetch_historico_capital(data_ini: date, data_fim: date) -> dict:
+    df = get_evolucao_kpis()
+    return ad.line_de_df(df, "data", "capital_op", "Capital Operacional")
+
+
+def _fetch_modulos_nav(data_ini: date, data_fim: date) -> dict:
+    return ad.nav([
+        {"label": "💰 Financeiro", "href": "/Financeiro"},
+        {"label": "📈 Comercial", "href": "/Comercial"},
+        {"label": "📦 Estoque", "href": "/Estoque"},
+        {"label": "🛒 Compras", "href": "/Compras"},
+        {"label": "🔔 Alertas", "href": "/Alertas"},
+    ])
+
+
 WIDGETS_GERAL = [
     {"id": "ger_delta_caixa", "nome": "Variação do Caixa (desde ontem)", "origem": "Home",
      "descricao": "Diferença do saldo bancário desde o snapshot anterior.", "tipo": "kpi", "w": 3, "h": 2,
@@ -51,4 +72,13 @@ WIDGETS_GERAL = [
     {"id": "ger_delta_capital", "nome": "Variação do Capital Operacional (desde ontem)", "origem": "Home",
      "descricao": "Diferença do capital operacional desde o snapshot anterior.", "tipo": "kpi", "w": 3, "h": 2,
      "fetch": _fetch_delta("delta_capital_op")},
+    {"id": "ger_historico_caixa_ar", "nome": "Histórico — AR Vencido vs Caixa", "origem": "Home",
+     "descricao": "Evolução diária (snapshots) do AR vencido e do caixa.", "tipo": "line", "w": 6, "h": 4,
+     "fetch": _fetch_historico_caixa_ar},
+    {"id": "ger_historico_capital", "nome": "Histórico — Capital Operacional", "origem": "Home",
+     "descricao": "Evolução diária (snapshots) do capital operacional.", "tipo": "line", "w": 6, "h": 4,
+     "fetch": _fetch_historico_capital},
+    {"id": "ger_modulos_nav", "nome": "Módulos do Sistema", "origem": "Home",
+     "descricao": "Atalhos de navegação para os módulos do sistema.", "tipo": "nav", "w": 3, "h": 4,
+     "fetch": _fetch_modulos_nav},
 ]

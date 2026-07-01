@@ -17,3 +17,4 @@ __pycache__/
 
 # Logs de execução local (debug em desenvolvimento)
 streamlit_dev.log
+logs/

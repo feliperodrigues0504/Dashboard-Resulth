@@ -55,9 +55,9 @@ def render_bar(dado: dict):
 
 
 def render_line(dado: dict):
-    """Widget tipo gráfico de linha (Nivo Line)."""
+    """Widget tipo gráfico de linha (Nivo Line) — suporta 1 ou várias séries."""
     serie = dado.get("data", [])
-    if not serie or not serie[0].get("data"):
+    if not serie or not any(s.get("data") for s in serie):
         _sem_dados(); return
     with mui.Box(sx={"height": 200}):
         nivo.Line(
@@ -105,6 +105,18 @@ def render_lista_alertas(dado: dict):
                 mui.ListItemText(primary=it["titulo"], secondary=f"{it['modulo']} · {it['nivel'].upper()}")
 
 
+def render_nav(dado: dict):
+    """Widget tipo navegação: botões de atalho para os módulos do sistema."""
+    itens = dado.get("itens", [])
+    if not itens:
+        _sem_dados("Sem módulos configurados."); return
+    with mui.Stack(spacing=1):
+        for it in itens:
+            mui.Button(
+                it["label"], href=it["href"], variant="outlined", fullWidth=True,
+                sx={"justifyContent": "flex-start", "textTransform": "none"})
+
+
 RENDER_POR_TIPO = {
     "kpi": render_kpi,
     "progresso": render_progresso,
@@ -113,4 +125,5 @@ RENDER_POR_TIPO = {
     "pie": render_pie,
     "tabela": render_tabela,
     "lista_alertas": render_lista_alertas,
+    "nav": render_nav,
 }

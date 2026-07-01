@@ -41,15 +41,14 @@
 
 | Funcionalidade | Status | Observação |
 |----------------|--------|------------|
-| Tela inicial com módulos disponíveis | ✅ | `app.py` — cards por módulo |
-| Data/hora da última atualização | ⚠️ | Mostra a hora em que a página foi **renderizada** (`datetime.now()`), não a hora real do último fetch ao Firebird (que pode ser até 30 min mais antigo por causa do cache) — ver sugestão de indicador de frescor no plano de melhorias |
-| Sistema de Favoritos | ❌ | Não implementado |
-| Adicionar/remover dashboards | ❌ | Não implementado — seções fixas, só ocultáveis via checkbox na sidebar |
-| Reorganizar dashboards | ❌ | Não implementado |
-| Redimensionar dashboards | ❌ | Streamlit não tem suporte nativo a grid redimensionável; exigiria componente customizado |
-| Salvar preferências do usuário | ⚠️ | Implementado, mas só para "mostrar/ocultar seção" (`app.py::_pref`) — não há favoritos/posição/tamanho para salvar |
+| Tela inicial com módulos disponíveis | ✅ | `app.py` — widget de navegação `ger_modulos_nav` + Busca Global |
+| Data/hora da última atualização | ✅ | `components/freshness.py` — mostra o horário real do último fetch (cache miss), não a hora de renderização da página |
+| Sistema de Favoritos / Adicionar/remover dashboards | ✅ | Painel de indicadores: escolha quais widgets (de ~65 disponíveis, de todos os módulos) aparecem na Home, com checkbox — `app.py` + `core/dashboard/registry.py` |
+| Reorganizar dashboards | ✅ | Grid arrastável (`streamlit-elements` / `dashboard.Grid`) — arraste pelo cabeçalho do card |
+| Redimensionar dashboards | ✅ | Mesmo grid — redimensiona pelo canto do card |
+| Salvar preferências do usuário | ✅ | Seleção de widgets e layout (x/y/w/h) salvos em `preferencias_home` (DuckDB) |
 
-**Nota:** este é o maior desvio real do que foi pedido — o requisito original descreve uma home totalmente personalizável (favoritos, drag-and-drop, redimensionamento), e o que existe é uma home fixa com seções que só podem ser mostradas/ocultadas. Funcional e bem executada, mas não é o que foi especificado.
+**Nota:** indicadores dentro do grid usam Nivo/MUI em vez de Plotly/AgGrid (única forma de ter conteúdo de verdade dentro de um card arrastável nesta lib) — visual ligeiramente diferente do resto do app nessa área específica. Busca Global e Relatório Executivo continuam como seções fixas (não arrastáveis) por usarem `st.selectbox`/`st.download_button` nativos, que não funcionam dentro do grid.
 
 ---
 
@@ -75,7 +74,7 @@
 | Funcionalidade | Status | Observação |
 |----------------|--------|------------|
 | Meta do mês + indicadores (total faturado, % meta, projeção fechamento) | ✅ | `get_meta_mes()`, `get_projecao_fechamento_mes()` |
-| **Filtro por forma de pagamento (Dinheiro/PIX/Débito/Crédito+parcelas)** | ❌ | **Não implementado — contradiz versão anterior deste doc, que marcava ✅ por engano.** `PEDIDOC` não tem coluna de forma de pagamento; o dado existe em `MOVIREC.CODFORMAPGTO` (confirmado, mesmo campo usado no histórico de título), mas nunca foi cruzado com o faturamento. Requer decisão de negócio: como atribuir a forma de pagamento a um pedido que pode ter sido liquidado em várias parcelas/formas? |
+| **Filtro/relatório por forma de pagamento (Dinheiro/PIX/Débito/Crédito+parcelas)** | ✅ | Aba "💳 Forma de Pagamento" em Comercial — `get_faturamento_por_forma_pgto()`. Liga `PEDIDOC` a `MOVIREC.CODFORMAPGTO` via `NFSAIDC`/`DOCUREC.NUMDOCORIG` (decodificado), com **rateio proporcional** quando um pedido foi liquidado em mais de uma forma. Cobertura ~52% do faturamento (o resto é convênio/título em aberto, fora do rateio por não ter pedido associado de forma direta). Códigos do ERP (`03`, `07`, `CK`...) são mapeados para nomes pelo usuário, salvos no DuckDB. |
 | Faturamento por dia/semana/quinzena/mês + comparativos | ✅ | `get_faturamento_periodo()` |
 | Ticket médio geral e por vendedor | ✅ | `get_ticket_medio()` |
 | Top 10 clientes por faturamento e por lucro bruto | ✅ | `get_top_clientes_faturamento/lucro()` |
@@ -146,13 +145,13 @@
 | Módulo | Itens do pedido original | ✅ | ⚠️ | ❌ |
 |--------|---------------------------|----|----|----|
 | Requisitos Gerais | 13 | 13 | 0 | 0 |
-| Tela Inicial | 7 | 1 | 2 | 4 |
+| Tela Inicial | 6 | 6 | 0 | 0 |
 | Financeiro | ~30 | 30 | 0 | 0 |
-| Comercial | ~18 | 16 | 1 | 1 |
+| Comercial | ~18 | 17 | 1 | 0 |
 | Produtos | 4 | 4 | 0 | 0 |
 | Estoque | 7 | 7 | 0 | 0 |
 | Compras | 7 | 7 | 0 | 0 |
 | Alertas | 8 | 7 | 1 | 0 |
-| **Total** | **~94** | **85** | **4** | **5** |
+| **Total** | **~93** | **91** | **2** | **0** |
 
-A versão anterior deste documento (2026-06-10) registrava 64% de conclusão porque 4 módulos inteiros (Estoque, Compras, Produtos, Alertas) ainda não existiam naquela data. Hoje a conclusão real é de **~90%**, com gaps concentrados em: Tela Inicial (não é um dashboard de widgets reorganizáveis, é uma home fixa configurável) e 2 itens específicos do Comercial (forma de pagamento, sazonalidade de compras/margem).
+A versão de 2026-06-10 registrava 64% de conclusão porque 4 módulos inteiros (Estoque, Compras, Produtos, Alertas) ainda não existiam naquela data. A Tela Inicial passou de "home fixa configurável" para um painel de widgets arrastável/redimensionável (`app.py` + `core/dashboard/registry.py`, ~65 indicadores disponíveis de todos os módulos), e o filtro por forma de pagamento foi implementado com rateio proporcional. Resta apenas a Sazonalidade de Compras/Margem Bruta (⚠️) como gap conhecido.

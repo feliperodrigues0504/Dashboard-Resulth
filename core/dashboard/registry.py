@@ -1,7 +1,7 @@
 """
 core/dashboard/registry.py — registro central de widgets do Painel
 Personalizado. Agrega os widgets por módulo (ver widgets_*.py) e expõe
-helpers de consulta usados por pages/00_Painel_Personalizado.py.
+helpers de consulta usados por app.py (Home — painel arrastável/redimensionável).
 """
 from __future__ import annotations
 

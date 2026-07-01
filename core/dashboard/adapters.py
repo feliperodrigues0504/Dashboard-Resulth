@@ -67,3 +67,21 @@ def lista_alertas(alertas: list[dict] | None) -> dict:
     """Widget tipo lista (alertas ativos)."""
     alertas = alertas or []
     return {"itens": [{"titulo": a["titulo"], "modulo": a["modulo"], "nivel": a["nivel"]} for a in alertas]}
+
+
+def multiline_de_df(df: pd.DataFrame, x_col: str, series_map: dict[str, str]) -> dict:
+    """Widget tipo linha com várias séries (Nivo Line) — series_map: {coluna_do_df: nome_da_série}."""
+    if df is None or df.empty:
+        return {"data": [{"id": nome, "data": []} for nome in series_map.values()]}
+    series = []
+    for col, nome in series_map.items():
+        if col not in df.columns:
+            continue
+        pontos = [{"x": str(row[x_col]), "y": float(row[col] or 0)} for _, row in df.iterrows()]
+        series.append({"id": nome, "data": pontos})
+    return {"data": series}
+
+
+def nav(itens: list[dict]) -> dict:
+    """Widget tipo navegação: lista de {label, href} para os módulos do sistema."""
+    return {"itens": itens or []}
