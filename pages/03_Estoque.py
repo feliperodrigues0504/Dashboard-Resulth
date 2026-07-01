@@ -491,27 +491,60 @@ with aba_parado:
         col_p6.metric("Nunca venderam", len(df_nunca),
                       help="Produtos com estoque que nunca tiveram nenhuma venda PDV registrada — subconjunto dos parados.")
 
-        # Gráfico por grupo
-        grp_par = (
-            df_parado.groupby("GRUPO")
-            .agg(SKUS=("CODPROD", "count"), VALOR=("VALOR_CUSTO", "sum"))
-            .reset_index()
-            .sort_values("VALOR", ascending=False)
-            .head(15)
-        )
-        fig_par = px.bar(
-            grp_par, x="VALOR", y="GRUPO", orientation="h",
-            text=grp_par["VALOR"].apply(fmt_brl),
-            title=f"Estoque Parado por Grupo (>{_dias_p} dias)",
-            labels={"VALOR": "Valor custo (R$)", "GRUPO": "Grupo"},
-            color="VALOR", color_continuous_scale="Reds",
-            height=350,
-        )
-        fig_par.update_traces(textposition="outside")
-        fig_par.update_layout(yaxis={"categoryorder": "total ascending"},
-                               coloraxis_showscale=False,
-                               margin=dict(l=10, r=80, t=40, b=10))
-        st.plotly_chart(fig_par, use_container_width=True)
+        # Gráfico por grupo — stacked por faixa de tempo (não sobrepostas)
+        _FAIXAS_STK_BINS  = [30, 60, 90, 180, 365, float("inf")]
+        _FAIXAS_STK_LBLS  = ["30–60d", "60–90d", "90–180d", "180–365d", ">365d"]
+        _FAIXAS_STK_CORES = {
+            "30–60d":   COR_OK,
+            "60–90d":   COR_ALERTA,
+            "90–180d":  "#c0392b",
+            "180–365d": COR_PERIGO,
+            ">365d":    "#7b1111",
+        }
+        _df_par30 = get_estoque_parado(30, df_est, df_ult_venda)
+        if not _df_par30.empty:
+            _fp = _df_par30.copy()
+            _fp["FAIXA_STK"] = pd.cut(
+                _fp["DIAS_PARADO"], bins=_FAIXAS_STK_BINS,
+                labels=_FAIXAS_STK_LBLS, right=False)
+            _grp_f = (
+                _fp.groupby(["GRUPO", "FAIXA_STK"], observed=True)
+                .agg(SKUS=("CODPROD", "count"), VALOR=("VALOR_CUSTO", "sum"))
+                .reset_index()
+            )
+            _grp_ord = (
+                _fp.groupby("GRUPO")["VALOR_CUSTO"].sum()
+                .sort_values(ascending=True).tail(15).index.tolist()
+            )
+            _base_grupos = pd.DataFrame({"GRUPO": _grp_ord})
+            fig_par = go.Figure()
+            for _lbl in _FAIXAS_STK_LBLS:
+                _df_l = _grp_f[_grp_f["FAIXA_STK"] == _lbl][["GRUPO", "VALOR", "SKUS"]]
+                _df_l = _base_grupos.merge(_df_l, on="GRUPO", how="left").fillna(0)
+                fig_par.add_trace(go.Bar(
+                    name=_lbl,
+                    y=_df_l["GRUPO"], x=_df_l["VALOR"],
+                    orientation="h",
+                    marker_color=_FAIXAS_STK_CORES[_lbl],
+                    customdata=_df_l[["SKUS"]].values,
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        f"Faixa <b>{_lbl}</b><br>"
+                        "Valor custo: R$ %{x:,.2f}<br>"
+                        "SKUs: %{customdata[0]:.0f}"
+                        "<extra></extra>"
+                    ),
+                ))
+            fig_par.update_layout(
+                barmode="stack",
+                title="Estoque Parado por Grupo e Faixa de Tempo (Top 15)",
+                xaxis_title="Valor custo (R$)",
+                yaxis={"categoryorder": "array", "categoryarray": _grp_ord},
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                height=max(350, len(_grp_ord) * 30 + 120),
+                margin=dict(l=10, r=30, t=60, b=10),
+            )
+            st.plotly_chart(fig_par, use_container_width=True)
 
         # Tabela drill-down
         st.markdown(section_header("Produtos Parados — Detalhamento", "itens", 5),

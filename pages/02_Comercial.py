@@ -313,6 +313,54 @@ with aba_fat:
         fig.update_layout(height=320, margin=dict(t=10, b=0, l=0, r=0), yaxis_title="R$")
         st.plotly_chart(fig, use_container_width=True)
 
+    # ── Stacked por vendedor ──────────────────────────────────────
+    if not df_fat.empty and "NOME_VENDEDOR" in df_fat.columns:
+        st.markdown(section_header("Faturamento por Vendedor — Evolução Mensal", "cliente", 4),
+                    unsafe_allow_html=True)
+        _vd = df_fat.copy()
+        _vd["MES_DT"] = _vd["DATAFATURA"].dt.to_period("M").dt.to_timestamp()
+        _vd_grp = (
+            _vd.groupby(["MES_DT", "NOME_VENDEDOR"])
+            .agg(FATURAMENTO=("TOTALPEDIDO", "sum"), PEDIDOS=("CODPEDIDO", "nunique"))
+            .reset_index()
+        )
+        _vd_grp["TICKET"] = (_vd_grp["FATURAMENTO"] / _vd_grp["PEDIDOS"].replace(0, pd.NA)).fillna(0)
+
+        if not _vd_grp.empty:
+            fig_vd = px.bar(
+                _vd_grp.sort_values("MES_DT"),
+                x="MES_DT", y="FATURAMENTO", color="NOME_VENDEDOR",
+                barmode="stack",
+                custom_data=["NOME_VENDEDOR", "PEDIDOS", "TICKET"],
+                labels={"MES_DT": "Mês", "FATURAMENTO": "R$", "NOME_VENDEDOR": "Vendedor"},
+                title="Contribuição de cada vendedor por mês",
+            )
+            fig_vd.update_traces(
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Faturamento: <b>R$ %{y:,.2f}</b><br>"
+                    "Pedidos: %{customdata[1]}<br>"
+                    "Ticket médio: R$ %{customdata[2]:,.2f}"
+                    "<extra></extra>"
+                )
+            )
+            fig_vd.update_layout(
+                height=380,
+                xaxis=dict(
+                    rangeselector=dict(buttons=[
+                        dict(count=3,  label="3M",  step="month", stepmode="backward"),
+                        dict(count=6,  label="6M",  step="month", stepmode="backward"),
+                        dict(count=12, label="12M", step="month", stepmode="backward"),
+                        dict(step="all", label="Tudo"),
+                    ]),
+                    tickformat="%m/%Y",
+                ),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                margin=dict(t=60, b=0, l=0, r=0),
+                yaxis_title="R$",
+            )
+            st.plotly_chart(fig_vd, use_container_width=True)
+
     st.divider()
     col_tk, col_tk2 = st.columns([1, 2])
     tm = get_ticket_medio(df_fat)

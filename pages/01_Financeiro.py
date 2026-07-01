@@ -953,21 +953,53 @@ with aba_hist:
     df_hk, df_hi, df_hs = _hist_fin()
     MIN_PT = 3
 
-    # ── Saldo Bancário histórico ──────────────────────────────────
-    st.markdown(section_header("Evolução do Saldo Bancário", "bank", 5), unsafe_allow_html=True)
-    if df_hs.empty or len(df_hs) < MIN_PT:
-        st.info(f"Aguardando {MIN_PT} snapshots (atual: {len(df_hs)}). Coletado diariamente.")
+    # ── Saldo Bancário + A Receber histórico (stacked) ───────────
+    st.markdown(section_header("Evolução do Saldo Bancário vs A Receber", "bank", 5), unsafe_allow_html=True)
+    if df_hk.empty or len(df_hk) < MIN_PT:
+        st.info(f"Aguardando {MIN_PT} snapshots (atual: {len(df_hk)}). Coletado diariamente.")
     else:
-        df_hs["data"] = pd.to_datetime(df_hs["data"])
+        _sb = df_hk.copy()
+        _sb["data"] = pd.to_datetime(_sb["data"])
+        _sb["delta_saldo"] = _sb["saldo_bco"].diff().fillna(0)
+        _cdata_sb = _sb[["total_ar", "total_ap", "capital_op", "delta_saldo"]].values
+
         fig_sb = go.Figure()
-        fig_sb.add_trace(go.Scatter(
-            x=df_hs["data"], y=df_hs["saldo_total"],
-            mode="lines+markers", name="Saldo Bancário",
-            fill="tozeroy", line=dict(color=COR_PRIM, width=2),
+        fig_sb.add_trace(go.Bar(
+            name="Saldo Bancário", x=_sb["data"], y=_sb["saldo_bco"],
+            marker_color=COR_PRIM,
+            customdata=_cdata_sb,
+            hovertemplate=(
+                "<b>%{x|%d/%m/%Y}</b><br>"
+                "Saldo Bancário: <b>R$ %{y:,.2f}</b><br>"
+                "A Receber: R$ %{customdata[0]:,.2f}<br>"
+                "A Pagar: R$ %{customdata[1]:,.2f}<br>"
+                "Capital Op.: R$ %{customdata[2]:,.2f}<br>"
+                "Δ Caixa: <b>R$ %{customdata[3]:+,.2f}</b>"
+                "<extra></extra>"
+            ),
+        ))
+        fig_sb.add_trace(go.Bar(
+            name="A Receber", x=_sb["data"], y=_sb["total_ar"],
+            marker_color=COR_OK, opacity=0.75,
+            customdata=_sb[["vencido_ar"]].values,
+            hovertemplate=(
+                "<b>%{x|%d/%m/%Y}</b><br>"
+                "A Receber: <b>R$ %{y:,.2f}</b><br>"
+                "  do qual vencido: R$ %{customdata[0]:,.2f}"
+                "<extra></extra>"
+            ),
         ))
         fig_sb.update_layout(
-            height=260, margin=dict(l=5, r=5, t=10, b=5),
-            yaxis_title="R$", xaxis_title="")
+            barmode="group", height=280,
+            xaxis=dict(rangeselector=dict(buttons=[
+                dict(count=30, label="30d", step="day",   stepmode="backward"),
+                dict(count=3,  label="3M",  step="month", stepmode="backward"),
+                dict(count=6,  label="6M",  step="month", stepmode="backward"),
+                dict(step="all", label="Tudo"),
+            ])),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            margin=dict(l=5, r=5, t=30, b=5), yaxis_title="R$",
+        )
         st.plotly_chart(fig_sb, use_container_width=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1035,11 +1067,23 @@ with aba_hist:
             if col_s in df_hi.columns:
                 fi.add_trace(go.Bar(
                     x=df_hi["data"], y=df_hi[col_s],
-                    name=label, marker_color=cor))
+                    name=label, marker_color=cor,
+                    hovertemplate=(
+                        f"<b>{label}</b>: R$ %{{y:,.2f}}<extra></extra>"
+                    ),
+                ))
         fi.update_layout(
-            barmode="stack", height=300,
-            yaxis_title="R$", margin=dict(l=5, r=5, t=10, b=5),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02))
+            barmode="stack", height=320,
+            xaxis=dict(rangeselector=dict(buttons=[
+                dict(count=3,  label="3M",  step="month", stepmode="backward"),
+                dict(count=6,  label="6M",  step="month", stepmode="backward"),
+                dict(count=12, label="12M", step="month", stepmode="backward"),
+                dict(step="all", label="Tudo"),
+            ])),
+            yaxis_title="R$", margin=dict(l=5, r=5, t=30, b=5),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            hovermode="x unified",
+        )
         st.plotly_chart(fi, use_container_width=True)
 
     # Tabela dos snapshots
